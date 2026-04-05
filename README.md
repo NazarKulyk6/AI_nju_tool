@@ -53,6 +53,66 @@ Each listing stores the following fields:
 | `category` | User-defined category tag |
 | `created_at` | Timestamp of insertion |
 
+## Getting Started
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) + [Docker Compose](https://docs.docker.com/compose/install/)
+- [Git](https://git-scm.com/)
+
+### 1. Clone the repository
+
+```bash
+git clone git@github.com:NazarKulyk6/AI_nju_tool.git
+cd AI_nju_tool
+```
+
+### 2. Configure environment
+
+```bash
+cp env.example .env
+```
+
+Edit `.env` if you want to change credentials (defaults work out of the box).
+
+### 3. Build and start
+
+```bash
+docker-compose up -d --build
+```
+
+This starts **PostgreSQL** and the **web server**. The first build takes ~3–5 minutes (downloads the Playwright image).
+
+### 4. Open the web UI
+
+```
+http://localhost:3001
+```
+
+### 5. Run a scrape job
+
+**Option A — from the browser:**
+Click the **Scrape** button in the top-right corner, enter a search query and optional category, then click **Start**.
+
+**Option B — from the terminal (CLI):**
+```bash
+docker-compose run --rm scraper
+```
+You will be prompted to enter a search query.
+
+### Useful commands
+
+```bash
+# View logs
+docker-compose logs -f web
+
+# Stop everything
+docker-compose down
+
+# Stop and delete database volume (wipes all scraped data)
+docker-compose down -v
+```
+
 ## Ports
 
 | Service | Host port | Container port |
