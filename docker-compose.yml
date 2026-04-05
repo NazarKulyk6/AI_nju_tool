@@ -1,0 +1,96 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  docker-compose up -d              → start DB + web server
+#  docker-compose run --rm scraper   → run scraper interactively (CLI)
+#  Website: http://localhost:3001
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#  Network njuskalo_net (bridge):
+#  ┌─────────────────────────────────────────────────────────────┐
+#  │  web      → db:5432   (Express API + static files)          │
+#  │  scraper  → db:5432   (Playwright, run manually)            │
+#  └─────────────────────────────────────────────────────────────┘
+#  Host: localhost:5438 → db:5432  (external DB client)
+#  Host: localhost:3001 → web:3000 (browser)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: njuskalo_db
+    restart: unless-stopped
+    networks:
+      - njuskalo_net
+    environment:
+      POSTGRES_DB:       scraper
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5438:5432"   # host-only (DBeaver, psql, etc.)
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d scraper"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Web server ──────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    container_name: njuskalo_web
+    restart: unless-stopped
+    networks:
+      - njuskalo_net
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST:     db       # service hostname inside njuskalo_net
+      DB_PORT:     "5432"   # internal container port
+      DB_NAME:     scraper
+      DB_USER:     postgres
+      DB_PASSWORD: postgres
+      PORT:        "3000"
+    ports:
+      - "3001:3000"         # http://localhost:3001
+
+  # ── Scraper ─────────────────────────────────────────────────────────────────
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime       # playwright + xvfb stage
+    container_name: njuskalo_scraper
+    stdin_open: true        # required for CLI prompt
+    tty: true
+    networks:
+      - njuskalo_net
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST:     db
+      DB_PORT:     "5432"
+      DB_NAME:     scraper
+      DB_USER:     postgres
+      DB_PASSWORD: postgres
+    profiles:
+      - scraper              # does not start on `docker-compose up`
+
+# ─── Named network ─────────────────────────────────────────────────────────────
+networks:
+  njuskalo_net:
+    driver: bridge
+
+# ─── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  pg_data:
+    driver: local

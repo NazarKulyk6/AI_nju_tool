@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Njuskalo Scraper</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d0f18;
+      --surface:     #161927;
+      --surface2:    #1e2235;
+      --surface3:    #252a40;
+      --accent:      #fdcd00;
+      --accent2:     #ff8c00;
+      --text:        #e4e8f4;
+      --text-muted:  #6b738f;
+      --text-dim:    #9099b5;
+      --border:      #252a40;
+      --green:       #4ade80;
+      --radius:      14px;
+      --radius-sm:   8px;
+      --shadow:      0 8px 32px rgba(0,0,0,.55);
+      --transition:  .18s ease;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── Header ────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #161927 0%, #1a1e30 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 24px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+    .header-inner { max-width: 1200px; margin: 0 auto; }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .logo h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.3px; }
+    .logo span { color: var(--accent); }
+
+    .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .stats-bar { display: flex; gap: 20px; flex-wrap: wrap; }
+    .stat { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-muted); }
+    .stat-val { color: var(--accent); font-weight: 600; font-size: .85rem; }
+    .stat-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green); animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+    /* ── Scrape toggle button ────────────────────────── */
+    .scrape-toggle {
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      font-size: .82rem; font-weight: 600;
+      cursor: pointer;
+      padding: 7px 14px;
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap; flex-shrink: 0;
+      transition: border-color var(--transition), color var(--transition);
+    }
+    .scrape-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    .scrape-toggle .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-muted); transition: background var(--transition);
+    }
+    .scrape-toggle.running .dot { background: var(--accent); animation: pulse 1s infinite; }
+    .scrape-toggle.done    .dot { background: var(--green); }
+    .scrape-toggle.error   .dot { background: #f87171; }
+
+    /* ── Scrape panel ───────────────────────────────────── */
+    .scrape-panel {
+      margin-top: 14px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: none; flex-direction: column; gap: 12px;
+      animation: slideDown .18s ease;
+    }
+    .scrape-panel.open { display: flex; }
+    @keyframes slideDown {
+      from { opacity:0; transform: translateY(-8px); }
+      to   { opacity:1; transform: translateY(0); }
+    }
+    .scrape-panel-label {
+      font-size: .7rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1.2px;
+      color: var(--text-muted);
+    }
+    .scrape-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .scrape-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; }
+    .scrape-field label { font-size: .72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; }
+    .scrape-input {
+      background: var(--surface3);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text); font-size: .95rem;
+      padding: 10px 14px; outline: none;
+      width: 100%;
+      transition: border-color var(--transition);
+    }
+    .scrape-input::placeholder { color: var(--text-muted); }
+    .scrape-input:focus { border-color: var(--accent); }
+    #scrape-start {
+      background: var(--accent); color: #000;
+      border: none; border-radius: var(--radius-sm);
+      padding: 0 22px; height: 42px;
+      font-size: .9rem; font-weight: 700; cursor: pointer;
+      white-space: nowrap; flex-shrink: 0;
+      display: flex; align-items: center; gap: 7px;
+      align-self: flex-end;
+      transition: background var(--transition), opacity var(--transition);
+    }
+    #scrape-start:hover    { background: #e6b800; }
+    #scrape-start:disabled { opacity: .5; cursor: not-allowed; background: var(--accent); }
+
+    .scrape-status {
+      font-size: .83rem; border-radius: var(--radius-sm);
+      padding: 10px 14px; display: none; gap: 10px; align-items: center;
+    }
+    .scrape-status.visible { display: flex; }
+    .scrape-status.running { background: rgba(253,205,0,.08); color: var(--accent); border: 1px solid rgba(253,205,0,.2); }
+    .scrape-status.done    { background: rgba(74,222,128,.08); color: var(--green); border: 1px solid rgba(74,222,128,.2); }
+    .scrape-status.error   { background: rgba(248,113,113,.08); color: #f87171; border: 1px solid rgba(248,113,113,.2); }
+    .scrape-spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(253,205,0,.3);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    .timer-badge {
+      background: rgba(253,205,0,.15);
+      color: var(--accent);
+      font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums;
+      padding: 2px 8px; border-radius: 5px; flex-shrink: 0;
+    }
+
+    /* ── Search ─────────────────────────────────────────── */
+    .search-wrap {
+      position: relative; display: flex; gap: 10px; align-items: center;
+      margin-top: 14px;
+    }
+    .search-field { position: relative; flex: 1; }
+    .search-field svg {
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      color: var(--text-muted); pointer-events: none; flex-shrink: 0;
+    }
+    #search {
+      width: 100%; background: var(--surface2);
+      border: 1.5px solid var(--border); border-radius: var(--radius);
+      color: var(--text); font-size: 1rem;
+      padding: 13px 44px 13px 44px; outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    #search::placeholder { color: var(--text-muted); }
+    #search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(253,205,0,.12); }
+    .clear-btn {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      background: var(--surface3); border: none; color: var(--text-muted);
+      cursor: pointer; border-radius: 6px; width: 26px; height: 26px;
+      display: none; align-items: center; justify-content: center;
+      font-size: 16px; transition: color var(--transition);
+    }
+    .clear-btn:hover { color: var(--text); }
+    .clear-btn.visible { display: flex; }
+    .search-btn {
+      background: var(--accent); color: #000; border: none;
+      border-radius: var(--radius); padding: 0 22px; height: 48px;
+      font-size: .95rem; font-weight: 700; cursor: pointer;
+      white-space: nowrap; flex-shrink: 0;
+      display: flex; align-items: center; gap: 7px;
+      transition: background var(--transition), transform var(--transition);
+    }
+    .search-btn:hover  { background: #e6b800; }
+    .search-btn:active { transform: scale(.97); }
+
+    /* ── Category chips bar ─────────────────────────────── */
+    .category-bar {
+      display: none; align-items: center; gap: 8px;
+      margin-top: 10px; flex-wrap: wrap;
+    }
+    .category-bar.visible { display: flex; }
+    .cat-label { font-size: .72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; white-space: nowrap; }
+    .cat-chip {
+      background: var(--surface2); border: 1.5px solid var(--border);
+      color: var(--text-dim); font-size: .78rem; font-weight: 600;
+      padding: 4px 12px; border-radius: 20px; cursor: pointer;
+      white-space: nowrap;
+      transition: all var(--transition);
+      display: flex; align-items: center; gap: 5px;
+    }
+    .cat-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .cat-chip.active { background: var(--accent); border-color: var(--accent); color: #000; }
+    .cat-chip .cat-count { font-size: .7rem; opacity: .75; }
+
+    /* ── Main ───────────────────────────────────────────── */
+    main { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+
+    .results-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 18px; flex-wrap: wrap; gap: 8px;
+    }
+    .results-count { font-size: .88rem; color: var(--text-muted); }
+    .results-count strong { color: var(--text); }
+
+    /* ── Grid ───────────────────────────────────────────── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
+    /* ── Card ───────────────────────────────────────────── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px; cursor: pointer;
+      transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .card:hover { transform: translateY(-3px); border-color: rgba(253,205,0,.35); box-shadow: 0 12px 32px rgba(0,0,0,.4); }
+    .card-title {
+      font-size: 1rem; font-weight: 600; line-height: 1.4; color: var(--text);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .card-price {
+      display: inline-flex; align-items: center;
+      background: rgba(253,205,0,.12); color: var(--accent);
+      font-weight: 700; font-size: .95rem;
+      padding: 4px 10px; border-radius: 6px; align-self: flex-start;
+    }
+    .card-price.no-price { background: var(--surface2); color: var(--text-muted); font-weight: 400; font-size: .8rem; }
+    .card-category {
+      display: inline-flex; align-items: center;
+      background: rgba(255,140,0,.1); color: var(--accent2);
+      font-size: .72rem; font-weight: 600;
+      padding: 2px 8px; border-radius: 4px; align-self: flex-start;
+    }
+    .card-preview {
+      font-size: .8rem; color: var(--text-dim);
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+      line-height: 1.5;
+    }
+    .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border);
+    }
+    .card-date { font-size: .75rem; color: var(--text-muted); }
+    .card-link {
+      font-size: .75rem; color: var(--accent2); text-decoration: none;
+      font-weight: 500; padding: 3px 8px; border-radius: 5px;
+      border: 1px solid rgba(255,140,0,.3); transition: background var(--transition);
+    }
+    .card-link:hover { background: rgba(255,140,0,.1); }
+
+    /* ── Skeleton ───────────────────────────────────────── */
+    .skeleton {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+      display: flex; flex-direction: column; gap: 12px; pointer-events: none;
+    }
+    .skel {
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%);
+      background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* ── Empty / Error ──────────────────────────────────── */
+    .empty { text-align: center; padding: 80px 20px; grid-column: 1/-1; }
+    .empty-icon { font-size: 3rem; margin-bottom: 16px; }
+    .empty h3 { color: var(--text); margin-bottom: 8px; }
+    .empty p  { color: var(--text-muted); font-size: .9rem; }
+
+    /* ── Pagination ─────────────────────────────────────── */
+    .pagination {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; margin-top: 40px; flex-wrap: wrap;
+    }
+    .pag-btn {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 8px 16px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: .88rem; transition: all var(--transition);
+    }
+    .pag-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pag-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+    .pag-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .pag-info { font-size: .8rem; color: var(--text-muted); padding: 0 8px; }
+
+    /* ── Modal ──────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.75);
+      backdrop-filter: blur(4px); z-index: 500;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); width: 100%; max-width: 720px; max-height: 90vh;
+      display: flex; flex-direction: column;
+      box-shadow: var(--shadow); animation: slideUp .22s ease;
+    }
+    @keyframes slideUp { from { opacity:0; transform: translateY(24px); } to { opacity:1; transform: translateY(0); } }
+    .modal-header {
+      padding: 22px 24px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    }
+    .modal-title-wrap { flex: 1; }
+    .modal-title { font-size: 1.2rem; font-weight: 700; line-height: 1.4; margin-bottom: 8px; }
+    .modal-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .modal-price {
+      background: rgba(253,205,0,.15); color: var(--accent);
+      font-weight: 700; font-size: 1.05rem; padding: 5px 12px; border-radius: 8px;
+    }
+    .modal-price.no-price { background: var(--surface2); color: var(--text-muted); font-size: .8rem; font-weight: 400; }
+    .modal-category {
+      background: rgba(255,140,0,.1); color: var(--accent2);
+      font-size: .78rem; font-weight: 600; padding: 4px 10px; border-radius: 6px;
+    }
+    .modal-url {
+      color: var(--accent2); font-size: .8rem; text-decoration: none;
+      padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,140,0,.3);
+      transition: background var(--transition);
+    }
+    .modal-url:hover { background: rgba(255,140,0,.1); }
+    .close-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text-muted); width: 34px; height: 34px; border-radius: 8px;
+      cursor: pointer; font-size: 18px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      transition: all var(--transition);
+    }
+    .close-btn:hover { color: var(--text); border-color: var(--text-muted); }
+    .modal-body {
+      overflow-y: auto; padding: 20px 24px 24px;
+      display: flex; flex-direction: column; gap: 24px;
+    }
+    .modal-body::-webkit-scrollbar { width: 6px; }
+    .modal-body::-webkit-scrollbar-track { background: transparent; }
+    .modal-body::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+    .section-label {
+      font-size: .7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .section-text { font-size: .88rem; color: var(--text-dim); line-height: 1.75; white-space: pre-wrap; }
+    .modal-loading {
+      display: flex; align-items: center; justify-content: center;
+      padding: 60px 20px; color: var(--text-muted); gap: 12px;
+    }
+    .spinner {
+      width: 22px; height: 22px;
+      border: 2px solid var(--surface3); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Responsive ─────────────────────────────────────── */
+    @media (max-width: 640px) {
+      header { padding: 16px 16px 18px; }
+      main   { padding: 16px 14px 48px; }
+      .modal-header, .modal-body { padding-left: 18px; padding-right: 18px; }
+      .grid  { grid-template-columns: 1fr; }
+      .scrape-row { flex-direction: column; align-items: stretch; }
+      #scrape-start { align-self: stretch; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════════════════════ -->
+<header>
+  <div class="header-inner">
+    <div class="header-top">
+      <div class="logo">
+        <div class="logo-icon">🔍</div>
+        <h1>Njuskalo <span>Scraper</span></h1>
+      </div>
+      <div class="header-right">
+        <div class="stats-bar" id="stats-bar">
+          <div class="stat"><div class="stat-dot"></div><span>Loading...</span></div>
+        </div>
+        <button class="scrape-toggle" id="scrape-toggle" title="Run scraper">
+          <span class="dot"></span> Scrape
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Scrape panel ──────────────────────────────────── -->
+    <div class="scrape-panel" id="scrape-panel">
+      <div class="scrape-panel-label">Run Scraper</div>
+      <div class="scrape-row">
+        <div class="scrape-field">
+          <label for="scrape-query">Search query</label>
+          <input id="scrape-query" class="scrape-input" type="text"
+                 placeholder="e.g. volkswagen golf, iphone 14, mac mini…"
+                 autocomplete="off" />
+        </div>
+        <div class="scrape-field">
+          <label for="scrape-category">Category</label>
+          <input id="scrape-category" class="scrape-input" type="text"
+                 list="categories-list"
+                 placeholder="e.g. Cars, Phones, SSD drives…"
+                 autocomplete="off" />
+          <datalist id="categories-list"></datalist>
+        </div>
+        <button id="scrape-start">
+          <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Start
+        </button>
+      </div>
+      <div class="scrape-status" id="scrape-status"></div>
+    </div>
+
+    <!-- ── Search ────────────────────────────────────────── -->
+    <div class="search-wrap">
+      <div class="search-field">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+             viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="search" type="text"
+               placeholder="Search listings by title, description or details…"
+               autocomplete="off" />
+        <button class="clear-btn" id="clear-btn" title="Clear">✕</button>
+      </div>
+      <button class="search-btn" id="search-btn">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"
+             viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Search
+      </button>
+    </div>
+
+    <!-- ── Category chips ────────────────────────────────── -->
+    <div class="category-bar" id="category-bar">
+      <span class="cat-label">Category:</span>
+      <div id="cat-chips"></div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════════════════════════ -->
+<main>
+  <div class="results-header">
+    <div class="results-count" id="results-count"></div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="pagination" id="pagination"></div>
+</main>
+
+<!-- ═══ MODAL ═════════════════════════════════════════════════════════════════ -->
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+/* ─── State ─────────────────────────────────────────────────────────────────── */
+let currentPage     = 1;
+let currentQuery    = '';
+let currentCategory = '';
+let totalPages      = 1;
+let debounceTimer;
+
+/* ─── DOM refs ──────────────────────────────────────────────────────────────── */
+const searchEl      = document.getElementById('search');
+const searchBtn     = document.getElementById('search-btn');
+const clearBtn      = document.getElementById('clear-btn');
+const gridEl        = document.getElementById('grid');
+const pagEl         = document.getElementById('pagination');
+const countEl       = document.getElementById('results-count');
+const statsBar      = document.getElementById('stats-bar');
+const overlay       = document.getElementById('overlay');
+const modalContent  = document.getElementById('modal-content');
+const categoryBar   = document.getElementById('category-bar');
+const catChipsEl    = document.getElementById('cat-chips');
+
+/* ─── Utils ─────────────────────────────────────────────────────────────────── */
+function fmt(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric' })
+       + ' ' + d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+}
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtElapsed(startIso) {
+  if (!startIso) return '00:00';
+  const secs = Math.floor((Date.now() - new Date(startIso).getTime()) / 1000);
+  const m = String(Math.floor(secs / 60)).padStart(2, '0');
+  const s = String(secs % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+/* ─── Stats ─────────────────────────────────────────────────────────────────── */
+async function loadStats() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    statsBar.innerHTML = `
+      <div class="stat"><div class="stat-dot"></div>
+        <span>Total: <span class="stat-val">${d.total ?? 0}</span></span>
+      </div>
+      <div class="stat">
+        <span>With price: <span class="stat-val">${d.with_price ?? 0}</span></span>
+      </div>
+      ${d.last_scraped ? `<div class="stat"><span>Last scraped: <span class="stat-val">${d.last_scraped}</span></span></div>` : ''}
+    `;
+  } catch { /* ignore */ }
+}
+
+/* ─── Categories ─────────────────────────────────────────────────────────────── */
+async function loadCategories() {
+  try {
+    const r    = await fetch('/api/categories');
+    const cats = await r.json(); // [{ category, count }]
+
+    // Populate datalist for scrape panel autocomplete
+    const dl = document.getElementById('categories-list');
+    dl.innerHTML = cats.map(c => `<option value="${esc(c.category)}">`).join('');
+
+    // Render category filter chips
+    if (cats.length === 0) { categoryBar.classList.remove('visible'); return; }
+
+    categoryBar.classList.add('visible');
+    catChipsEl.innerHTML = `
+      <button class="cat-chip ${currentCategory === '' ? 'active' : ''}" data-cat="">
+        All
+      </button>
+      ${cats.map(c => `
+        <button class="cat-chip ${currentCategory === c.category ? 'active' : ''}" data-cat="${esc(c.category)}">
+          ${esc(c.category)}
+          <span class="cat-count">${c.count}</span>
+        </button>
+      `).join('')}
+    `;
+
+    catChipsEl.querySelectorAll('.cat-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentCategory = btn.dataset.cat;
+        currentPage = 1;
+        catChipsEl.querySelectorAll('.cat-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        fetchListings(currentQuery, 1);
+      });
+    });
+  } catch { /* ignore */ }
+}
+
+/* ─── Skeletons ─────────────────────────────────────────────────────────────── */
+function showSkeletons(n = 12) {
+  gridEl.innerHTML = Array.from({length: n}, () => `
+    <div class="skeleton">
+      <div class="skel" style="height:20px;width:75%"></div>
+      <div class="skel" style="height:28px;width:35%"></div>
+      <div class="skel" style="height:14px"></div>
+      <div class="skel" style="height:14px;width:85%"></div>
+      <div class="skel" style="height:14px;width:60%"></div>
+    </div>`).join('');
+}
+
+/* ─── Fetch listings ────────────────────────────────────────────────────────── */
+async function fetchListings(query = '', page = 1) {
+  showSkeletons();
+  pagEl.innerHTML   = '';
+  countEl.innerHTML = '';
+
+  const params = new URLSearchParams({ page, limit: 24 });
+  if (query)           params.set('q',        query);
+  if (currentCategory) params.set('category', currentCategory);
+
+  try {
+    const res  = await fetch(`/api/listings?${params}`);
+    const json = await res.json();
+    renderGrid(json.data, query);
+    renderPagination(json.pagination);
+    totalPages = json.pagination.totalPages;
+    const { total, page: pg, totalPages: tp } = json.pagination;
+
+    let label = '';
+    if (query)           label += ` for "<strong>${esc(query)}</strong>"`;
+    if (currentCategory) label += ` in category <strong>${esc(currentCategory)}</strong>`;
+
+    countEl.innerHTML = total === 0
+      ? 'No results found'
+      : `Showing <strong>${json.data.length}</strong> of <strong>${total}</strong> listings${label} — page ${pg}/${tp}`;
+  } catch (err) {
+    gridEl.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <div class="empty-icon">⚠️</div><h3>Failed to load</h3>
+      <p>${esc(err.message)}</p>
+    </div>`;
+  }
+}
+
+/* ─── Render grid ───────────────────────────────────────────────────────────── */
+function renderGrid(items, query) {
+  if (!items.length) {
+    gridEl.innerHTML = `<div class="empty">
+      <div class="empty-icon">🔎</div>
+      <h3>No results found</h3>
+      <p>Try a different search term or category.</p>
+    </div>`;
+    return;
+  }
+  gridEl.innerHTML = items.map(item => {
+    const priceHtml = item.price
+      ? `<div class="card-price">${esc(item.price)}</div>`
+      : `<div class="card-price no-price">Price not listed</div>`;
+    const catHtml = item.category
+      ? `<div class="card-category">🏷 ${esc(item.category)}</div>` : '';
+    const preview = (item.description_preview ?? '').replace(/\s+/g,' ').trim();
+    return `
+      <div class="card" data-id="${item.id}" tabindex="0" role="button" aria-label="${esc(item.title)}">
+        <div class="card-title">${esc(item.title ?? '(no title)')}</div>
+        ${priceHtml}
+        ${catHtml}
+        ${preview ? `<div class="card-preview">${esc(preview)}</div>` : ''}
+        <div class="card-footer">
+          <span class="card-date">${fmt(item.created_at)}</span>
+          <a class="card-link" href="${esc(item.url)}" target="_blank" rel="noopener"
+             onclick="event.stopPropagation()">Open ↗</a>
+        </div>
+      </div>`;
+  }).join('');
+
+  gridEl.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', () => openModal(card.dataset.id));
+    card.addEventListener('keydown', e => { if (e.key === 'Enter') openModal(card.dataset.id); });
+  });
+}
+
+/* ─── Pagination ────────────────────────────────────────────────────────────── */
+function renderPagination({ page, totalPages: tp }) {
+  if (tp <= 1) { pagEl.innerHTML = ''; return; }
+  const pages = [];
+  for (let i = 1; i <= tp; i++) {
+    if (i === 1 || i === tp || (i >= page - 2 && i <= page + 2)) pages.push(i);
+    else if (pages[pages.length - 1] !== '…') pages.push('…');
+  }
+  pagEl.innerHTML = `
+    <button class="pag-btn" ${page <= 1 ? 'disabled' : ''} data-page="${page-1}">← Previous</button>
+    ${pages.map(p => p === '…'
+      ? `<span class="pag-info">…</span>`
+      : `<button class="pag-btn ${p === page ? 'active' : ''}" data-page="${p}">${p}</button>`
+    ).join('')}
+    <button class="pag-btn" ${page >= tp ? 'disabled' : ''} data-page="${page+1}">Next →</button>`;
+  pagEl.querySelectorAll('.pag-btn:not(:disabled)').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentPage = parseInt(btn.dataset.page, 10);
+      fetchListings(currentQuery, currentPage);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+}
+
+/* ─── Modal ─────────────────────────────────────────────────────────────────── */
+async function openModal(id) {
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  modalContent.innerHTML = `<div class="modal-loading"><div class="spinner"></div>Loading…</div>`;
+  try {
+    const res  = await fetch(`/api/listings/${id}`);
+    const item = await res.json();
+    if (item.error) throw new Error(item.error);
+    const infoText = (item.info ?? '').replace(/\s{2,}/g,' ').trim();
+    const descText = (item.description ?? '').trim();
+    modalContent.innerHTML = `
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-title">${esc(item.title ?? '(no title)')}</div>
+          <div class="modal-meta">
+            <span class="modal-price ${item.price ? '' : 'no-price'}">${esc(item.price ?? 'Price not listed')}</span>
+            ${item.category ? `<span class="modal-category">🏷 ${esc(item.category)}</span>` : ''}
+            <a class="modal-url" href="${esc(item.url)}" target="_blank" rel="noopener">Open listing ↗</a>
+          </div>
+        </div>
+        <button class="close-btn" id="close-modal" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        ${infoText ? `<div><div class="section-label">Basic Info</div><div class="section-text">${esc(infoText)}</div></div>` : ''}
+        ${descText ? `<div><div class="section-label">Description</div><div class="section-text">${esc(descText)}</div></div>` : ''}
+        ${!infoText && !descText ? `<div class="empty"><div class="empty-icon">📄</div><p>No details available.</p></div>` : ''}
+        <div class="stat" style="font-size:.75rem;color:var(--text-muted);">Added: ${fmt(item.created_at)}</div>
+      </div>`;
+    document.getElementById('close-modal').addEventListener('click', closeModal);
+  } catch (err) {
+    modalContent.innerHTML = `
+      <div class="modal-header">
+        <div class="modal-title-wrap"><div class="modal-title">Error</div></div>
+        <button class="close-btn" id="close-modal">✕</button>
+      </div>
+      <div class="modal-body"><div class="empty"><div class="empty-icon">⚠️</div><p>${esc(err.message)}</p></div></div>`;
+    document.getElementById('close-modal').addEventListener('click', closeModal);
+  }
+}
+function closeModal() {
+  overlay.classList.remove('open');
+  document.body.style.overflow = '';
+  modalContent.innerHTML = '';
+}
+
+/* ─── Search events ─────────────────────────────────────────────────────────── */
+function doSearch() {
+  clearTimeout(debounceTimer);
+  currentQuery = searchEl.value.trim();
+  currentPage  = 1;
+  fetchListings(currentQuery, 1);
+}
+searchEl.addEventListener('input', () => {
+  clearBtn.classList.toggle('visible', searchEl.value.length > 0);
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(doSearch, 420);
+});
+searchEl.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+searchBtn.addEventListener('click', doSearch);
+clearBtn.addEventListener('click', () => {
+  searchEl.value = '';
+  clearBtn.classList.remove('visible');
+  currentQuery = ''; currentPage = 1;
+  fetchListings('', 1); searchEl.focus();
+});
+overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ─── Scrape panel ──────────────────────────────────────────────────────────── */
+const scrapeToggle  = document.getElementById('scrape-toggle');
+const scrapePanel   = document.getElementById('scrape-panel');
+const scrapeQueryEl = document.getElementById('scrape-query');
+const scrapeCatEl   = document.getElementById('scrape-category');
+const scrapeStart   = document.getElementById('scrape-start');
+const scrapeStatus  = document.getElementById('scrape-status');
+
+let pollTimer     = null;
+let timerInterval = null;
+let jobStartedAt  = null;
+
+scrapeToggle.addEventListener('click', () => {
+  scrapePanel.classList.toggle('open');
+  if (scrapePanel.classList.contains('open')) scrapeQueryEl.focus();
+});
+scrapeQueryEl.addEventListener('keydown', e => { if (e.key === 'Enter') startScrape(); });
+scrapeCatEl.addEventListener('keydown',   e => { if (e.key === 'Enter') startScrape(); });
+scrapeStart.addEventListener('click', startScrape);
+
+async function startScrape() {
+  const q   = scrapeQueryEl.value.trim();
+  const cat = scrapeCatEl.value.trim();
+  if (!q) { scrapeQueryEl.focus(); return; }
+
+  scrapeStart.disabled = true;
+  jobStartedAt = new Date().toISOString();
+  startTimerInterval();
+  showScrapeStatus('running', buildRunningMsg(q, cat, jobStartedAt));
+  updateToggleDot('running');
+
+  try {
+    const res  = await fetch('/api/scrape', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, category: cat || undefined }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    pollScrapeStatus();
+  } catch (err) {
+    stopTimerInterval();
+    showScrapeStatus('error', `Error: ${esc(err.message)}`);
+    updateToggleDot('error');
+    scrapeStart.disabled = false;
+  }
+}
+
+/* ─── Timer ─────────────────────────────────────────────────────────────────── */
+function startTimerInterval() {
+  stopTimerInterval();
+  timerInterval = setInterval(() => {
+    const badge = document.getElementById('elapsed-timer');
+    if (badge && jobStartedAt) badge.textContent = fmtElapsed(jobStartedAt);
+  }, 1000);
+}
+function stopTimerInterval() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+function buildRunningMsg(query, cat, startIso) {
+  const catPart = cat ? ` | Category: <strong>${esc(cat)}</strong>` : '';
+  return `
+    <div class="scrape-spinner"></div>
+    <span>Scraping: <strong>${esc(query)}</strong>${catPart}</span>
+    <span class="timer-badge" id="elapsed-timer">${fmtElapsed(startIso)}</span>`;
+}
+
+/* ─── Poll job status ───────────────────────────────────────────────────────── */
+function pollScrapeStatus() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await fetch('/api/scrape/status');
+      const job = await res.json();
+
+      if (job.status === 'running') {
+        if (!jobStartedAt) { jobStartedAt = job.startedAt; startTimerInterval(); }
+        showScrapeStatus('running', buildRunningMsg(job.query, job.category, job.startedAt));
+        updateToggleDot('running');
+      } else if (job.status === 'done') {
+        clearInterval(pollTimer); stopTimerInterval();
+        const msg = job.saved > 0
+          ? `✅ Done! Added <strong>${job.saved}</strong> new listings for "${esc(job.query)}".`
+          : `✅ Done! No new listings for "${esc(job.query)}" (already in database).`;
+        showScrapeStatus('done', msg);
+        updateToggleDot('done');
+        scrapeStart.disabled = false;
+        jobStartedAt = null;
+        // Refresh stats, categories and listings automatically
+        loadStats(); loadCategories(); fetchListings(currentQuery, currentPage);
+      } else if (job.status === 'error') {
+        clearInterval(pollTimer); stopTimerInterval();
+        showScrapeStatus('error', `❌ Error: ${esc(job.error ?? 'unknown error')}`);
+        updateToggleDot('error');
+        scrapeStart.disabled = false;
+        jobStartedAt = null;
+      }
+    } catch { /* network hiccup — retry next tick */ }
+  }, 3000);
+}
+
+function showScrapeStatus(type, html) {
+  scrapeStatus.className = `scrape-status visible ${type}`;
+  scrapeStatus.innerHTML = html;
+}
+function updateToggleDot(state) {
+  scrapeToggle.className = `scrape-toggle ${state}`;
+}
+
+/* ─── Restore running job on page load ──────────────────────────────────────── */
+(async () => {
+  try {
+    const res = await fetch('/api/scrape/status');
+    const job = await res.json();
+    if (job.status === 'running') {
+      scrapePanel.classList.add('open');
+      scrapeStart.disabled = true;
+      jobStartedAt = job.startedAt;
+      startTimerInterval();
+      showScrapeStatus('running', buildRunningMsg(job.query, job.category, job.startedAt));
+      updateToggleDot('running');
+      pollScrapeStatus();
+    } else if (job.status === 'done' || job.status === 'error') {
+      updateToggleDot(job.status);
+    }
+  } catch { /* ignore */ }
+})();
+
+/* ─── Init ──────────────────────────────────────────────────────────────────── */
+loadStats();
+loadCategories();
+fetchListings();
+</script>
+</body>
+</html>
