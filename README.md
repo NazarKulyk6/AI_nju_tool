@@ -78,7 +78,7 @@ Edit `.env` if you want to change credentials (defaults work out of the box).
 ### 3. Build and start
 
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 This starts **PostgreSQL** and the **web server**. The first build takes ~3–5 minutes (downloads the Playwright image).
@@ -96,7 +96,7 @@ Click the **Scrape** button in the top-right corner, enter a search query and op
 
 **Option B — from the terminal (CLI):**
 ```bash
-docker-compose run --rm scraper
+docker compose run --rm scraper
 ```
 You will be prompted to enter a search query.
 
@@ -104,13 +104,13 @@ You will be prompted to enter a search query.
 
 ```bash
 # View logs
-docker-compose logs -f web
+docker compose logs -f web
 
 # Stop everything
-docker-compose down
+docker compose down
 
 # Stop and delete database volume (wipes all scraped data)
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Ports
