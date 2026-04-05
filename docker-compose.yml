@@ -59,6 +59,7 @@ services:
       DB_USER:     postgres
       DB_PASSWORD: postgres
       PORT:        "3000"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
     ports:
       - "3001:3000"         # http://localhost:3001
 

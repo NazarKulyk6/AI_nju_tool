@@ -18,23 +18,29 @@ app.use(express.static(PUBLIC_DIR));
 
 // ─── Scrape job state ─────────────────────────────────────────────────────────
 interface ScrapeJob {
-  status:     'idle' | 'running' | 'done' | 'error';
-  query:      string;
-  category:   string | null;
-  startedAt:  string | null;
-  finishedAt: string | null;
-  error:      string | null;
-  saved:      number;
+  status:            'idle' | 'running' | 'done' | 'error';
+  queries:           string[];       // all queued queries
+  currentQuery:      string;         // query being scraped right now
+  currentQueryIndex: number;         // 1-based index of current query
+  totalQueries:      number;         // total queries in this job
+  category:          string | null;
+  startedAt:         string | null;
+  finishedAt:        string | null;
+  error:             string | null;
+  saved:             number;
 }
 
 let scrapeJob: ScrapeJob = {
-  status:     'idle',
-  query:      '',
-  category:   null,
-  startedAt:  null,
-  finishedAt: null,
-  error:      null,
-  saved:      0,
+  status:            'idle',
+  queries:           [],
+  currentQuery:      '',
+  currentQueryIndex: 0,
+  totalQueries:      0,
+  category:          null,
+  startedAt:         null,
+  finishedAt:        null,
+  error:             null,
+  saved:             0,
 };
 
 // ─── API: Stats ───────────────────────────────────────────────────────────────
@@ -63,28 +69,111 @@ app.get('/api/categories', async (_req: Request, res: Response) => {
       GROUP BY category
       ORDER BY count DESC, category
     `);
-    res.json(result.rows);   // [{ category: 'ssd', count: '37' }, ...]
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
 });
 
-// ─── API: Trigger scrape ──────────────────────────────────────────────────────
+// ─── API: Gemini — expand search query into Croatian search terms ──────────────
+app.post('/api/suggest-queries', async (req: Request, res: Response) => {
+  const apiKey = process.env.GEMINI_API_KEY ?? '';
+  if (!apiKey) {
+    res.status(503).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+    return;
+  }
+
+  const userInput = ((req.body?.query as string) ?? '').trim();
+  if (!userInput) {
+    res.status(400).json({ error: 'Query is required.' });
+    return;
+  }
+
+  const prompt = `You are a search assistant for njuskalo.hr — the largest Croatian classifieds website.
+The user wants to find listings for: "${userInput}"
+
+Generate a comprehensive list of search terms that would capture ALL relevant listings on this site.
+Rules:
+- Include Croatian translations, common local abbreviations, brand names, model variations, alternative spellings
+- Use terms that Croatian sellers would actually type when creating listings
+- Mix Croatian and English terms (both are common on the site)
+- Each term should be 1-5 words
+- Return 10-20 terms depending on the complexity of the item
+- Return ONLY a valid JSON array of strings — no explanations, no markdown, no extra text
+
+Example for input "rtx 2060":
+["rtx 2060","nvidia 2060","grafička kartica 2060","geforce 2060","2060 super","rtx2060","2060 6gb","vga 2060","nvidia rtx 2060","2060 gaming"]`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('[Gemini] API error:', errBody);
+      res.status(502).json({ error: `Gemini API error: ${response.status}` });
+      return;
+    }
+
+    const data = await response.json() as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+    // Extract JSON array from the response (handle possible markdown code fences)
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) {
+      console.error('[Gemini] Could not parse JSON from:', raw);
+      res.status(502).json({ error: 'Gemini returned unexpected format.', raw });
+      return;
+    }
+
+    const terms: string[] = JSON.parse(match[0]);
+    // Deduplicate and clean
+    const unique = [...new Set(terms.map((t: string) => t.trim().toLowerCase()).filter(Boolean))];
+
+    console.log(`[Gemini] Expanded "${userInput}" → ${unique.length} terms`);
+    res.json({ terms: unique });
+  } catch (err) {
+    console.error('[Gemini] Request failed:', (err as Error).message);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── API: Trigger scrape (supports multiple queries) ──────────────────────────
 app.post('/api/scrape', async (req: Request, res: Response) => {
   if (scrapeJob.status === 'running') {
     res.status(409).json({ error: 'Scraper already running', job: scrapeJob });
     return;
   }
 
-  const query    = ((req.body?.query    as string) ?? '').trim();
-  const category = ((req.body?.category as string) ?? '').trim() || null;
+  // Accept either a single `query` string or a `queries` array
+  let queries: string[] = [];
+  if (Array.isArray(req.body?.queries)) {
+    queries = (req.body.queries as string[]).map((q: string) => q.trim()).filter(Boolean);
+  } else {
+    const single = ((req.body?.query as string) ?? '').trim();
+    if (single) queries = [single];
+  }
 
-  if (!query) {
-    res.status(400).json({ error: 'Query is required' });
+  if (queries.length === 0) {
+    res.status(400).json({ error: 'At least one query is required.' });
     return;
   }
 
-  // Snapshot current DB count so we can calculate how many new rows were saved
+  const category = ((req.body?.category as string) ?? '').trim() || null;
+
+  // Snapshot DB count to measure how many rows are added
   let countBefore = 0;
   try {
     const r = await getPool().query('SELECT COUNT(*) FROM listings');
@@ -92,32 +181,49 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
   } catch { /* ignore */ }
 
   scrapeJob = {
-    status:     'running',
-    query,
+    status:            'running',
+    queries,
+    currentQuery:      queries[0],
+    currentQueryIndex: 1,
+    totalQueries:      queries.length,
     category,
-    startedAt:  new Date().toISOString(),
-    finishedAt: null,
-    error:      null,
-    saved:      0,
+    startedAt:         new Date().toISOString(),
+    finishedAt:        null,
+    error:             null,
+    saved:             0,
   };
 
   res.json({ ok: true, job: scrapeJob });
 
-  // Run scraper in background — do NOT await
-  runScraper(buildSearchUrl(query), category ?? undefined)
-    .then(async () => {
+  // Run all queries sequentially in the background
+  (async () => {
+    try {
+      for (let i = 0; i < queries.length; i++) {
+        const q = queries[i];
+        scrapeJob.currentQuery      = q;
+        scrapeJob.currentQueryIndex = i + 1;
+        console.log(`[Scrape] Query ${i + 1}/${queries.length}: "${q}"`);
+        await runScraper(buildSearchUrl(q), category ?? undefined);
+      }
+
       let saved = 0;
       try {
         const r = await getPool().query('SELECT COUNT(*) FROM listings');
         saved = parseInt(r.rows[0].count, 10) - countBefore;
       } catch { /* ignore */ }
+
       scrapeJob = { ...scrapeJob, status: 'done', finishedAt: new Date().toISOString(), saved };
-      console.log(`[Scrape] Job "${query}" done. New rows: ${saved}`);
-    })
-    .catch((err: Error) => {
-      scrapeJob = { ...scrapeJob, status: 'error', error: err.message, finishedAt: new Date().toISOString() };
-      console.error(`[Scrape] Job "${query}" failed:`, err.message);
-    });
+      console.log(`[Scrape] All ${queries.length} queries done. New rows: ${saved}`);
+    } catch (err) {
+      scrapeJob = {
+        ...scrapeJob,
+        status:     'error',
+        error:      (err as Error).message,
+        finishedAt: new Date().toISOString(),
+      };
+      console.error('[Scrape] Job failed:', (err as Error).message);
+    }
+  })();
 });
 
 // ─── API: Scrape job status ───────────────────────────────────────────────────
@@ -136,7 +242,6 @@ app.get('/api/listings', async (req: Request, res: Response) => {
   try {
     const pool = getPool();
 
-    // Build WHERE clause dynamically
     const conditions: string[] = [];
     const params: unknown[]    = [];
 

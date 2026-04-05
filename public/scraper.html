@@ -20,6 +20,7 @@
       --border:     #252a40;
       --green:      #4ade80;
       --red:        #f87171;
+      --purple:     #a78bfa;
       --radius:     14px;
       --radius-sm:  8px;
       --shadow:     0 8px 32px rgba(0,0,0,.55);
@@ -28,144 +29,191 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      line-height: 1.6;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; line-height: 1.6;
     }
 
     /* ── Header ───────────────────────────────────────────── */
     header {
       background: linear-gradient(135deg, #161927 0%, #1a1e30 100%);
       border-bottom: 1px solid var(--border);
-      padding: 18px 24px;
-      position: sticky; top: 0; z-index: 100;
+      padding: 18px 24px; position: sticky; top: 0; z-index: 100;
     }
     .header-inner {
       max-width: 1100px; margin: 0 auto;
       display: flex; align-items: center; justify-content: space-between; gap: 16px;
     }
     .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-    .logo-icon {
-      width: 34px; height: 34px; background: var(--accent);
-      border-radius: 10px; display: flex; align-items: center; justify-content: center;
-      font-size: 17px; flex-shrink: 0;
-    }
+    .logo-icon { width: 34px; height: 34px; background: var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
     .logo h1 { font-size: 1.15rem; font-weight: 700; color: var(--text); }
     .logo span { color: var(--accent); }
-
     nav { display: flex; gap: 6px; }
-    .nav-link {
-      padding: 7px 16px; border-radius: var(--radius-sm);
-      font-size: .85rem; font-weight: 600; text-decoration: none;
-      color: var(--text-muted); border: 1.5px solid transparent;
-      transition: all var(--transition);
-    }
-    .nav-link:hover { color: var(--text); border-color: var(--border); }
+    .nav-link { padding: 7px 16px; border-radius: var(--radius-sm); font-size: .83rem; font-weight: 600; text-decoration: none; color: var(--text-muted); border: 1.5px solid transparent; transition: all var(--transition); }
+    .nav-link:hover  { color: var(--text); border-color: var(--border); }
     .nav-link.active { color: var(--accent); border-color: rgba(253,205,0,.3); background: rgba(253,205,0,.07); }
 
     /* ── Layout ───────────────────────────────────────────── */
-    main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; display: grid; gap: 24px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 80px; display: grid; gap: 20px; }
 
     /* ── Card ─────────────────────────────────────────────── */
-    .card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 24px 28px;
-    }
-    .card-title {
-      font-size: .7rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 18px;
-      display: flex; align-items: center; gap: 8px;
-    }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 26px; }
+    .card-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
     .card-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .card-title .badge { font-size: .65rem; padding: 2px 8px; border-radius: 10px; background: rgba(167,139,250,.15); color: var(--purple); text-transform: none; letter-spacing: 0; font-weight: 600; }
 
     /* ── Stats grid ───────────────────────────────────────── */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
-    .stat-box {
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 16px 18px;
-    }
-    .stat-box-label { font-size: .72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
-    .stat-box-value { font-size: 1.75rem; font-weight: 800; color: var(--accent); line-height: 1; }
-    .stat-box-sub { font-size: .75rem; color: var(--text-muted); margin-top: 4px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 12px; }
+    .stat-box { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; }
+    .stat-box-label { font-size: .7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 5px; }
+    .stat-box-value { font-size: 1.7rem; font-weight: 800; color: var(--accent); line-height: 1; }
+    .stat-box-sub   { font-size: .72rem; color: var(--text-muted); margin-top: 3px; }
 
-    /* ── Category breakdown ───────────────────────────────── */
+    /* ── Category bars ────────────────────────────────────── */
     .cat-list { display: flex; flex-direction: column; gap: 8px; }
-    .cat-row {
-      display: flex; align-items: center; gap: 12px;
-      font-size: .88rem;
-    }
-    .cat-name { flex: 1; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cat-row { display: flex; align-items: center; gap: 12px; font-size: .85rem; }
+    .cat-name { flex: 1; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cat-bar-wrap { flex: 2; background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; }
-    .cat-bar { height: 100%; border-radius: 4px; background: var(--accent); transition: width .5s ease; }
-    .cat-count { font-size: .8rem; font-weight: 700; color: var(--accent); min-width: 28px; text-align: right; }
+    .cat-bar { height: 100%; border-radius: 4px; background: var(--accent); transition: width .6s ease; }
+    .cat-count { font-size: .78rem; font-weight: 700; color: var(--accent); min-width: 28px; text-align: right; }
 
-    /* ── Scrape form ──────────────────────────────────────── */
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .field { display: flex; flex-direction: column; gap: 6px; }
-    .field label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); }
-    .field input {
+    /* ── AI Query Builder ─────────────────────────────────── */
+    .ai-row { display: flex; gap: 10px; align-items: flex-end; }
+    .ai-field { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .ai-field label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); }
+    .ai-input {
       background: var(--surface2); border: 1.5px solid var(--border);
       border-radius: var(--radius-sm); color: var(--text); font-size: .95rem;
       padding: 11px 14px; outline: none; width: 100%;
       transition: border-color var(--transition);
     }
-    .field input::placeholder { color: var(--text-muted); }
-    .field input:focus { border-color: var(--accent); }
+    .ai-input::placeholder { color: var(--text-muted); }
+    .ai-input:focus { border-color: var(--purple); }
+
+    .btn-ai {
+      height: 44px; padding: 0 20px; border: none; border-radius: var(--radius-sm);
+      font-size: .9rem; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      display: flex; align-items: center; gap: 8px;
+      background: linear-gradient(135deg, rgba(167,139,250,.2) 0%, rgba(167,139,250,.1) 100%);
+      border: 1.5px solid rgba(167,139,250,.35); color: var(--purple);
+      transition: all var(--transition);
+    }
+    .btn-ai:hover    { background: rgba(167,139,250,.25); border-color: rgba(167,139,250,.6); }
+    .btn-ai:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-ai .ai-spinner {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid rgba(167,139,250,.3); border-top-color: var(--purple);
+      animation: spin .6s linear infinite; display: none;
+    }
+    .btn-ai.loading .ai-spinner { display: block; }
+    .btn-ai.loading .ai-icon    { display: none; }
+
+    /* ── Query chips ──────────────────────────────────────── */
+    .queries-wrap { margin-top: 14px; }
+    .queries-label {
+      font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-muted); margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .queries-label-actions { display: flex; gap: 8px; }
+    .lbl-action-btn {
+      font-size: .72rem; font-weight: 600; text-transform: none; letter-spacing: 0;
+      background: none; border: 1px solid var(--border); color: var(--text-muted);
+      border-radius: 5px; padding: 2px 8px; cursor: pointer;
+      transition: all var(--transition);
+    }
+    .lbl-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface2); border: 1.5px solid var(--border);
+      color: var(--text-dim); font-size: .8rem; font-weight: 500;
+      padding: 5px 12px; border-radius: 20px; cursor: pointer;
+      transition: all var(--transition); user-select: none;
+    }
+    .chip:hover   { border-color: var(--accent); color: var(--text); }
+    .chip.selected { background: rgba(253,205,0,.12); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .chip.selected::before { content: '✓ '; }
+    .chip-add {
+      background: none; border: 1.5px dashed var(--border); color: var(--text-muted);
+      font-size: .8rem; padding: 5px 12px; border-radius: 20px; cursor: pointer;
+      transition: all var(--transition);
+    }
+    .chip-add:hover { border-color: var(--accent); color: var(--accent); }
+
+    .add-custom-row { display: none; gap: 8px; align-items: center; margin-top: 8px; }
+    .add-custom-row.open { display: flex; }
+    .add-custom-input {
+      flex: 1; background: var(--surface2); border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-size: .85rem;
+      padding: 7px 12px; outline: none; transition: border-color var(--transition);
+    }
+    .add-custom-input:focus { border-color: var(--accent); }
+    .btn-add-confirm {
+      background: var(--accent); color: #000; border: none;
+      border-radius: var(--radius-sm); padding: 0 14px; height: 34px;
+      font-size: .85rem; font-weight: 700; cursor: pointer;
+    }
+
+    /* ── Category + Start row ─────────────────────────────── */
+    .start-row { display: flex; gap: 12px; align-items: flex-end; margin-top: 18px; flex-wrap: wrap; }
+    .cat-field { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 6px; }
+    .cat-field label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); }
+    .cat-input {
+      background: var(--surface2); border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-size: .95rem;
+      padding: 11px 14px; outline: none; width: 100%;
+      transition: border-color var(--transition);
+    }
+    .cat-input::placeholder { color: var(--text-muted); }
+    .cat-input:focus { border-color: var(--accent); }
 
     .btn-start {
-      grid-column: 1 / -1;
-      background: var(--accent); color: #000; border: none;
-      border-radius: var(--radius-sm); height: 46px;
+      height: 46px; padding: 0 28px; border: none; border-radius: var(--radius-sm);
+      background: var(--accent); color: #000;
       font-size: 1rem; font-weight: 700; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
+      display: flex; align-items: center; gap: 8px; white-space: nowrap; flex-shrink: 0;
       transition: background var(--transition), opacity var(--transition);
     }
     .btn-start:hover    { background: #e6b800; }
     .btn-start:disabled { opacity: .45; cursor: not-allowed; }
 
+    .selected-count { font-size: .8rem; color: var(--text-muted); align-self: center; white-space: nowrap; }
+    .selected-count strong { color: var(--accent); }
+
     /* ── Status block ─────────────────────────────────────── */
-    .status-block {
-      border-radius: var(--radius-sm); padding: 14px 18px;
-      display: none; gap: 12px; align-items: center; flex-wrap: wrap;
-    }
+    .status-block { border-radius: var(--radius-sm); padding: 14px 18px; display: none; gap: 12px; align-items: center; flex-wrap: wrap; }
     .status-block.visible { display: flex; }
     .status-block.running { background: rgba(253,205,0,.07); border: 1px solid rgba(253,205,0,.2); color: var(--accent); }
     .status-block.done    { background: rgba(74,222,128,.07);  border: 1px solid rgba(74,222,128,.2);  color: var(--green); }
     .status-block.error   { background: rgba(248,113,113,.07); border: 1px solid rgba(248,113,113,.2); color: var(--red); }
-
     .status-msg { flex: 1; font-size: .88rem; line-height: 1.5; }
-    .timer {
-      font-size: .8rem; font-weight: 700; font-variant-numeric: tabular-nums;
-      background: rgba(0,0,0,.25); padding: 3px 10px; border-radius: 6px;
-      min-width: 52px; text-align: center;
-    }
-    .spinner {
-      width: 18px; height: 18px; border-radius: 50%;
-      border: 2px solid rgba(253,205,0,.3); border-top-color: var(--accent);
-      animation: spin .7s linear infinite; flex-shrink: 0;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress-badge { font-size: .78rem; font-weight: 700; background: rgba(0,0,0,.25); padding: 3px 10px; border-radius: 6px; white-space: nowrap; }
+    .timer-badge { font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums; background: rgba(0,0,0,.25); padding: 3px 10px; border-radius: 6px; min-width: 52px; text-align: center; }
+    .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(253,205,0,.3); border-top-color: var(--accent); animation: spin .7s linear infinite; flex-shrink: 0; }
 
-    /* ── History table ────────────────────────────────────── */
-    .history-empty { color: var(--text-muted); font-size: .88rem; padding: 8px 0; }
-    .history-row {
-      display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
-      padding: 10px 0; border-bottom: 1px solid var(--border);
-      font-size: .85rem;
-    }
-    .history-row:last-child { border-bottom: none; }
-    .h-query { font-weight: 600; color: var(--text); }
+    /* ── History ──────────────────────────────────────────── */
+    .history-empty { color: var(--text-muted); font-size: .88rem; }
+    .history-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .history-item:last-child { border-bottom: none; }
+    .history-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 5px; }
+    .h-queries-count { font-size: .8rem; color: var(--text-muted); }
     .h-cat { color: var(--accent2); font-size: .78rem; background: rgba(255,140,0,.1); padding: 2px 7px; border-radius: 4px; }
-    .h-saved { color: var(--green); font-weight: 700; }
-    .h-err { color: var(--red); }
-    .h-time { color: var(--text-muted); font-size: .78rem; margin-left: auto; white-space: nowrap; }
-    .h-dur { color: var(--text-muted); font-size: .78rem; }
+    .h-saved { color: var(--green); font-weight: 700; font-size: .88rem; }
+    .h-err   { color: var(--red); font-size: .88rem; }
+    .h-dur   { color: var(--text-muted); font-size: .78rem; }
+    .h-time  { color: var(--text-muted); font-size: .78rem; margin-left: auto; white-space: nowrap; }
+    .h-terms { display: flex; flex-wrap: wrap; gap: 5px; }
+    .h-term  { font-size: .72rem; background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); padding: 2px 8px; border-radius: 10px; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
+    .chips .chip { animation: fadeIn .15s ease; }
 
     @media (max-width: 640px) {
-      .form-grid { grid-template-columns: 1fr; }
-      .btn-start { grid-column: 1; }
-      main { padding: 20px 14px 60px; }
+      main { padding: 18px 14px 60px; }
+      .ai-row, .start-row { flex-direction: column; align-items: stretch; }
+      .btn-ai, .btn-start { justify-content: center; }
     }
   </style>
 </head>
@@ -174,10 +222,7 @@
 <!-- ══ HEADER ═══════════════════════════════════════════════ -->
 <header>
   <div class="header-inner">
-    <a class="logo" href="/">
-      <div class="logo-icon">🔍</div>
-      <h1>Njuskalo <span>Scraper</span></h1>
-    </a>
+    <a class="logo" href="/"><div class="logo-icon">🔍</div><h1>Njuskalo <span>Scraper</span></h1></a>
     <nav>
       <a class="nav-link" href="/">Listings</a>
       <a class="nav-link active" href="/scraper">Scraper</a>
@@ -191,11 +236,11 @@
   <!-- ── Stats ─────────────────────────────────────────────── -->
   <div class="card">
     <div class="card-title">Database Stats</div>
-    <div class="stats-grid" id="stats-grid">
+    <div class="stats-grid">
       <div class="stat-box"><div class="stat-box-label">Total listings</div><div class="stat-box-value" id="s-total">—</div></div>
       <div class="stat-box"><div class="stat-box-label">With price</div><div class="stat-box-value" id="s-price">—</div></div>
       <div class="stat-box"><div class="stat-box-label">Categories</div><div class="stat-box-value" id="s-cats">—</div></div>
-      <div class="stat-box"><div class="stat-box-label">Last scraped</div><div class="stat-box-value" style="font-size:1.1rem" id="s-last">—</div><div class="stat-box-sub" id="s-last-sub"></div></div>
+      <div class="stat-box"><div class="stat-box-label">Last scraped</div><div class="stat-box-value" style="font-size:1.05rem" id="s-last">—</div><div class="stat-box-sub" id="s-last-sub"></div></div>
     </div>
   </div>
 
@@ -205,36 +250,74 @@
     <div class="cat-list" id="cat-list"></div>
   </div>
 
-  <!-- ── Scrape form ────────────────────────────────────────── -->
+  <!-- ── AI Query Builder ───────────────────────────────────── -->
   <div class="card">
-    <div class="card-title">Run New Scrape Job</div>
-    <div class="form-grid">
-      <div class="field">
-        <label for="q-input">Search query</label>
-        <input id="q-input" type="text" placeholder="e.g. volkswagen golf, iphone 14, ssd…" autocomplete="off" />
+    <div class="card-title">
+      Build Search Queries
+      <span class="badge">✨ AI-powered</span>
+    </div>
+
+    <!-- Step 1: enter keyword + generate -->
+    <div class="ai-row">
+      <div class="ai-field">
+        <label for="ai-input">What do you want to find?</label>
+        <input id="ai-input" class="ai-input" type="text"
+               placeholder="e.g. video card 2060, iPhone 14, electric scooter…"
+               autocomplete="off" />
       </div>
-      <div class="field">
-        <label for="cat-input">Category <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input id="cat-input" type="text" list="cat-dl" placeholder="e.g. Cars, Phones, Electronics…" autocomplete="off" />
-        <datalist id="cat-dl"></datalist>
-      </div>
-      <button class="btn-start" id="btn-start">
-        <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        Start Scraping
+      <button class="btn-ai" id="btn-generate">
+        <span class="ai-icon">✨ Generate with AI</span>
+        <div class="ai-spinner"></div>
       </button>
     </div>
+    <div id="ai-error" style="font-size:.82rem;color:var(--red);margin-top:8px;display:none"></div>
+
+    <!-- Step 2: query chips (appears after generation) -->
+    <div class="queries-wrap" id="queries-wrap" style="display:none">
+      <div class="queries-label">
+        <span>Select queries to scrape</span>
+        <div class="queries-label-actions">
+          <button class="lbl-action-btn" id="btn-select-all">Select all</button>
+          <button class="lbl-action-btn" id="btn-deselect-all">Deselect all</button>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="add-custom-row" id="add-custom-row">
+        <input class="add-custom-input" id="custom-input" type="text" placeholder="Add custom query…" autocomplete="off" />
+        <button class="btn-add-confirm" id="btn-add-confirm">Add</button>
+      </div>
+      <button class="chip-add" id="btn-chip-add" style="margin-top:8px">+ Add custom</button>
+
+      <!-- Step 3: category + start -->
+      <div class="start-row">
+        <div class="cat-field">
+          <label for="cat-input">Category <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <input id="cat-input" class="cat-input" type="text" list="cat-dl"
+                 placeholder="e.g. Cars, Phones, Electronics…" autocomplete="off" />
+          <datalist id="cat-dl"></datalist>
+        </div>
+        <div class="selected-count" id="selected-count"></div>
+        <button class="btn-start" id="btn-start" disabled>
+          <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Start Scraping
+        </button>
+      </div>
+    </div>
+
+    <!-- Status -->
     <div style="margin-top:14px">
       <div class="status-block" id="status-block">
         <div class="spinner" id="status-spinner" style="display:none"></div>
         <div class="status-msg" id="status-msg"></div>
-        <div class="timer" id="status-timer" style="display:none"></div>
+        <div class="progress-badge" id="progress-badge" style="display:none"></div>
+        <div class="timer-badge" id="timer-badge" style="display:none"></div>
       </div>
     </div>
   </div>
 
   <!-- ── History ────────────────────────────────────────────── -->
   <div class="card">
-    <div class="card-title">Scrape History <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.8rem;color:var(--text-muted)">(this session)</span></div>
+    <div class="card-title">Scrape History <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.78rem;color:var(--text-muted)">(this session)</span></div>
     <div id="history-list"><div class="history-empty">No jobs run yet this session.</div></div>
   </div>
 
@@ -242,20 +325,28 @@
 
 <script>
 /* ─── State ──────────────────────────────────────────────── */
-const history = [];
+const jobHistory = [];
+let allTerms  = [];    // all generated terms
+let selected  = new Set();  // indices of selected chips
 let pollTimer    = null;
 let timerInterval = null;
 let jobStartedAt = null;
 
 /* ─── DOM ────────────────────────────────────────────────── */
-const qInput      = document.getElementById('q-input');
-const catInput    = document.getElementById('cat-input');
-const btnStart    = document.getElementById('btn-start');
-const statusBlock = document.getElementById('status-block');
-const statusMsg   = document.getElementById('status-msg');
-const statusTimer = document.getElementById('status-timer');
+const aiInput      = document.getElementById('ai-input');
+const btnGenerate  = document.getElementById('btn-generate');
+const aiError      = document.getElementById('ai-error');
+const queriesWrap  = document.getElementById('queries-wrap');
+const chipsEl      = document.getElementById('chips');
+const catInput     = document.getElementById('cat-input');
+const btnStart     = document.getElementById('btn-start');
+const selectedCount = document.getElementById('selected-count');
+const statusBlock  = document.getElementById('status-block');
+const statusMsg    = document.getElementById('status-msg');
 const statusSpinner = document.getElementById('status-spinner');
-const historyList = document.getElementById('history-list');
+const progressBadge = document.getElementById('progress-badge');
+const timerBadge   = document.getElementById('timer-badge');
+const historyList  = document.getElementById('history-list');
 
 /* ─── Utils ──────────────────────────────────────────────── */
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -267,8 +358,7 @@ function elapsed(isoStart) {
 function duration(isoStart, isoEnd) {
   if (!isoStart || !isoEnd) return '';
   const s = Math.floor((new Date(isoEnd) - new Date(isoStart)) / 1000);
-  const m = Math.floor(s / 60), sec = s % 60;
-  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  return Math.floor(s/60) > 0 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`;
 }
 function fmtDate(iso) {
   if (!iso) return '';
@@ -285,81 +375,187 @@ async function loadStats() {
     document.getElementById('s-total').textContent = s.total ?? '0';
     document.getElementById('s-price').textContent = s.with_price ?? '0';
     document.getElementById('s-cats').textContent  = cats.length;
+
     if (s.last_scraped) {
-      document.getElementById('s-last').textContent    = s.last_scraped.split(' ')[0];
-      document.getElementById('s-last-sub').textContent = s.last_scraped.split(' ')[1] ?? '';
+      const parts = s.last_scraped.split(' ');
+      document.getElementById('s-last').textContent    = parts[0];
+      document.getElementById('s-last-sub').textContent = parts[1] ?? '';
     }
 
     // Category breakdown
+    const catCard = document.getElementById('cat-card');
+    const catList = document.getElementById('cat-list');
     if (cats.length > 0) {
-      const max = Math.max(...cats.map(c => parseInt(c.count)));
-      const catCard = document.getElementById('cat-card');
-      const catList = document.getElementById('cat-list');
       catCard.style.display = '';
-      catList.innerHTML = cats.map(c => {
-        const pct = Math.round(parseInt(c.count) / max * 100);
-        return `
-          <div class="cat-row">
-            <span class="cat-name">${esc(c.category)}</span>
-            <div class="cat-bar-wrap"><div class="cat-bar" style="width:${pct}%"></div></div>
-            <span class="cat-count">${c.count}</span>
-          </div>`;
-      }).join('');
+      const max = Math.max(...cats.map(c => parseInt(c.count)));
+      catList.innerHTML = cats.map(c => `
+        <div class="cat-row">
+          <span class="cat-name">${esc(c.category)}</span>
+          <div class="cat-bar-wrap"><div class="cat-bar" style="width:${Math.round(parseInt(c.count)/max*100)}%"></div></div>
+          <span class="cat-count">${c.count}</span>
+        </div>`).join('');
 
       // Populate datalist
-      document.getElementById('cat-dl').innerHTML =
-        cats.map(c => `<option value="${esc(c.category)}">`).join('');
+      document.getElementById('cat-dl').innerHTML = cats.map(c => `<option value="${esc(c.category)}">`).join('');
     }
   } catch { /* ignore */ }
 }
 
-/* ─── History rendering ──────────────────────────────────── */
-function renderHistory() {
-  if (history.length === 0) {
-    historyList.innerHTML = '<div class="history-empty">No jobs run yet this session.</div>';
-    return;
+/* ─── Chips rendering ────────────────────────────────────── */
+function renderChips() {
+  const html = allTerms.map((term, i) => `
+    <div class="chip ${selected.has(i) ? 'selected' : ''}" data-idx="${i}">${esc(term)}</div>
+  `).join('');
+  chipsEl.innerHTML = html;
+
+  chipsEl.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const idx = parseInt(chip.dataset.idx);
+      selected.has(idx) ? selected.delete(idx) : selected.add(idx);
+      chip.classList.toggle('selected');
+      updateSelectedCount();
+    });
+  });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const n = selected.size;
+  selectedCount.innerHTML = n === 0
+    ? '<span style="color:var(--red)">No queries selected</span>'
+    : `<strong>${n}</strong> quer${n === 1 ? 'y' : 'ies'} selected`;
+  btnStart.disabled = n === 0;
+}
+
+/* ─── AI: Generate queries ───────────────────────────────── */
+btnGenerate.addEventListener('click', generateQueries);
+aiInput.addEventListener('keydown', e => { if (e.key === 'Enter') generateQueries(); });
+
+async function generateQueries() {
+  const q = aiInput.value.trim();
+  if (!q) { aiInput.focus(); return; }
+
+  aiError.style.display = 'none';
+  btnGenerate.disabled = true;
+  btnGenerate.classList.add('loading');
+
+  try {
+    const res  = await fetch('/api/suggest-queries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+
+    allTerms = json.terms;
+    selected = new Set(allTerms.map((_, i) => i)); // select all by default
+    queriesWrap.style.display = '';
+    renderChips();
+  } catch (err) {
+    aiError.textContent = `AI error: ${err.message}`;
+    aiError.style.display = 'block';
+  } finally {
+    btnGenerate.disabled = false;
+    btnGenerate.classList.remove('loading');
   }
-  historyList.innerHTML = [...history].reverse().map(j => {
-    const badge   = j.category ? `<span class="h-cat">${esc(j.category)}</span>` : '';
-    const dur     = j.finishedAt ? `<span class="h-dur">· ${duration(j.startedAt, j.finishedAt)}</span>` : '';
-    const outcome = j.status === 'done'
-      ? `<span class="h-saved">+${j.saved} saved</span>`
-      : j.status === 'error'
-        ? `<span class="h-err">error</span>`
-        : `<span style="color:var(--accent)">running…</span>`;
-    return `
-      <div class="history-row">
-        <span class="h-query">${esc(j.query)}</span>
-        ${badge}
-        ${outcome}
-        ${dur}
-        <span class="h-time">${fmtDate(j.startedAt)}</span>
-      </div>`;
-  }).join('');
 }
 
-/* ─── Status UI helpers ──────────────────────────────────── */
-function showStatus(type, html) {
-  statusBlock.className = `status-block visible ${type}`;
-  statusMsg.innerHTML   = html;
-  statusSpinner.style.display = type === 'running' ? 'block' : 'none';
-  statusTimer.style.display   = type === 'running' ? 'block' : 'none';
+/* ─── Select / deselect all ──────────────────────────────── */
+document.getElementById('btn-select-all').addEventListener('click', () => {
+  allTerms.forEach((_, i) => selected.add(i));
+  renderChips();
+});
+document.getElementById('btn-deselect-all').addEventListener('click', () => {
+  selected.clear();
+  renderChips();
+});
+
+/* ─── Add custom query ───────────────────────────────────── */
+document.getElementById('btn-chip-add').addEventListener('click', () => {
+  const row = document.getElementById('add-custom-row');
+  row.classList.add('open');
+  document.getElementById('custom-input').focus();
+});
+document.getElementById('btn-add-confirm').addEventListener('click', addCustomTerm);
+document.getElementById('custom-input').addEventListener('keydown', e => { if (e.key === 'Enter') addCustomTerm(); });
+
+function addCustomTerm() {
+  const val = document.getElementById('custom-input').value.trim().toLowerCase();
+  if (!val) return;
+  if (!allTerms.includes(val)) {
+    allTerms.push(val);
+    selected.add(allTerms.length - 1);
+    renderChips();
+  }
+  document.getElementById('custom-input').value = '';
+  document.getElementById('add-custom-row').classList.remove('open');
 }
 
-function startTimer(isoStart) {
+/* ─── Start scraping ─────────────────────────────────────── */
+btnStart.addEventListener('click', startScrape);
+
+async function startScrape() {
+  const queries = allTerms.filter((_, i) => selected.has(i));
+  const cat     = catInput.value.trim();
+  if (queries.length === 0) return;
+
+  btnStart.disabled = true;
+  btnGenerate.disabled = true;
+  jobStartedAt = new Date().toISOString();
+  startTimer();
+  showStatus('running', buildRunningMsg(queries[0], 1, queries.length));
+
+  const entry = { queries, category: cat || null, status: 'running', startedAt: jobStartedAt, finishedAt: null, saved: 0, error: null };
+  jobHistory.push(entry);
+  renderHistory();
+
+  try {
+    const res  = await fetch('/api/scrape', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ queries, category: cat || undefined }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    startPolling();
+  } catch (err) {
+    stopTimer();
+    jobHistory[jobHistory.length - 1].status = 'error';
+    jobHistory[jobHistory.length - 1].error  = err.message;
+    renderHistory();
+    showStatus('error', `❌ ${esc(err.message)}`);
+    btnStart.disabled = false;
+    btnGenerate.disabled = false;
+  }
+}
+
+/* ─── Timer ──────────────────────────────────────────────── */
+function startTimer() {
   stopTimer();
-  jobStartedAt = isoStart;
-  statusTimer.textContent = elapsed(isoStart);
+  timerBadge.style.display = 'block';
   timerInterval = setInterval(() => {
-    statusTimer.textContent = elapsed(jobStartedAt);
+    timerBadge.textContent = elapsed(jobStartedAt);
   }, 1000);
 }
 function stopTimer() {
   clearInterval(timerInterval); timerInterval = null;
-  statusTimer.style.display = 'none';
+  timerBadge.style.display = 'none';
 }
 
-/* ─── Polling ────────────────────────────────────────────── */
+/* ─── Status ─────────────────────────────────────────────── */
+function showStatus(type, html) {
+  statusBlock.className = `status-block visible ${type}`;
+  statusMsg.innerHTML   = html;
+  statusSpinner.style.display  = type === 'running' ? 'block' : 'none';
+  progressBadge.style.display  = type === 'running' ? 'block' : 'none';
+}
+function buildRunningMsg(currentQ, idx, total) {
+  progressBadge.textContent = `${idx} / ${total}`;
+  return `Scraping: <strong>${esc(currentQ)}</strong>`;
+}
+
+/* ─── Poll ───────────────────────────────────────────────── */
 function startPolling() {
   clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
@@ -367,70 +563,58 @@ function startPolling() {
       const res = await fetch('/api/scrape/status');
       const job = await res.json();
 
-      // Update the last history entry (the running one)
-      if (history.length && history[history.length - 1].status === 'running') {
-        history[history.length - 1] = { ...history[history.length - 1], ...job };
-      }
-
       if (job.status === 'running') {
-        showStatus('running', `Scraping: <strong>${esc(job.query)}</strong>${job.category ? ` &nbsp;·&nbsp; category: <strong>${esc(job.category)}</strong>` : ''}`);
+        showStatus('running', buildRunningMsg(job.currentQuery, job.currentQueryIndex, job.totalQueries));
       } else if (job.status === 'done' || job.status === 'error') {
-        clearInterval(pollTimer);
-        stopTimer();
-        btnStart.disabled = false;
+        clearInterval(pollTimer); stopTimer();
+        btnStart.disabled    = selected.size === 0;
+        btnGenerate.disabled = false;
 
         if (job.status === 'done') {
-          showStatus('done', `✅ Done — <strong>${job.saved}</strong> new listings added for <strong>${esc(job.query)}</strong>.`);
+          showStatus('done', `✅ Done — <strong>${job.saved}</strong> new listings added across <strong>${job.totalQueries}</strong> quer${job.totalQueries === 1 ? 'y' : 'ies'}.`);
+          progressBadge.style.display = 'none';
         } else {
           showStatus('error', `❌ Error: ${esc(job.error ?? 'unknown error')}`);
+          progressBadge.style.display = 'none';
         }
 
+        // Update history entry
+        if (jobHistory.length) {
+          const last = jobHistory[jobHistory.length - 1];
+          last.status = job.status;
+          last.saved  = job.saved;
+          last.error  = job.error;
+          last.finishedAt = job.finishedAt;
+        }
         renderHistory();
-        loadStats(); // refresh numbers
+        loadStats();
       }
     } catch { /* retry */ }
   }, 2500);
 }
 
-/* ─── Start job ──────────────────────────────────────────── */
-async function startScrape() {
-  const q   = qInput.value.trim();
-  const cat = catInput.value.trim();
-  if (!q) { qInput.focus(); return; }
-
-  btnStart.disabled = true;
-  const startedAt = new Date().toISOString();
-
-  showStatus('running', `Scraping: <strong>${esc(q)}</strong>${cat ? ` &nbsp;·&nbsp; category: <strong>${esc(cat)}</strong>` : ''}`);
-  startTimer(startedAt);
-
-  const jobEntry = { query: q, category: cat || null, status: 'running', startedAt, finishedAt: null, saved: 0, error: null };
-  history.push(jobEntry);
-  renderHistory();
-
-  try {
-    const res  = await fetch('/api/scrape', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ query: q, category: cat || undefined }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-    startPolling();
-  } catch (err) {
-    stopTimer();
-    btnStart.disabled = false;
-    history[history.length - 1].status = 'error';
-    history[history.length - 1].error  = err.message;
-    renderHistory();
-    showStatus('error', `❌ ${esc(err.message)}`);
-  }
+/* ─── History ────────────────────────────────────────────── */
+function renderHistory() {
+  if (!jobHistory.length) { historyList.innerHTML = '<div class="history-empty">No jobs run yet this session.</div>'; return; }
+  historyList.innerHTML = [...jobHistory].reverse().map(j => {
+    const catBadge = j.category ? `<span class="h-cat">${esc(j.category)}</span>` : '';
+    const outcome  = j.status === 'done'
+      ? `<span class="h-saved">+${j.saved} saved</span>`
+      : j.status === 'error'
+        ? `<span class="h-err">error: ${esc(j.error)}</span>`
+        : `<span style="color:var(--accent)">running…</span>`;
+    const dur = j.finishedAt ? `<span class="h-dur">· ${duration(j.startedAt, j.finishedAt)}</span>` : '';
+    return `
+      <div class="history-item">
+        <div class="history-top">
+          <span style="font-size:.82rem;font-weight:600;color:var(--text-dim)">${j.queries.length} quer${j.queries.length===1?'y':'ies'}</span>
+          ${catBadge} ${outcome} ${dur}
+          <span class="h-time">${fmtDate(j.startedAt)}</span>
+        </div>
+        <div class="h-terms">${j.queries.slice(0, 12).map(q => `<span class="h-term">${esc(q)}</span>`).join('')}${j.queries.length > 12 ? `<span class="h-term">+${j.queries.length - 12} more</span>` : ''}</div>
+      </div>`;
+  }).join('');
 }
-
-/* ─── Events ─────────────────────────────────────────────── */
-btnStart.addEventListener('click', startScrape);
-qInput.addEventListener('keydown',   e => { if (e.key === 'Enter') startScrape(); });
-catInput.addEventListener('keydown', e => { if (e.key === 'Enter') startScrape(); });
 
 /* ─── Restore running job on load ────────────────────────── */
 (async () => {
@@ -438,10 +622,12 @@ catInput.addEventListener('keydown', e => { if (e.key === 'Enter') startScrape()
     const res = await fetch('/api/scrape/status');
     const job = await res.json();
     if (job.status === 'running') {
-      btnStart.disabled = true;
-      showStatus('running', `Scraping: <strong>${esc(job.query)}</strong>${job.category ? ` &nbsp;·&nbsp; category: <strong>${esc(job.category)}</strong>` : ''}`);
-      startTimer(job.startedAt);
-      history.push({ ...job });
+      btnStart.disabled    = true;
+      btnGenerate.disabled = true;
+      jobStartedAt = job.startedAt;
+      startTimer();
+      showStatus('running', buildRunningMsg(job.currentQuery, job.currentQueryIndex, job.totalQueries));
+      jobHistory.push({ ...job, queries: job.queries });
       renderHistory();
       startPolling();
     }
