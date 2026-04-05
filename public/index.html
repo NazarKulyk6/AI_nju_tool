@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Njuskalo Scraper</title>
+  <title>Njuskalo Scraper — Listings</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -39,149 +39,70 @@
     header {
       background: linear-gradient(135deg, #161927 0%, #1a1e30 100%);
       border-bottom: 1px solid var(--border);
-      padding: 20px 24px 24px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      padding: 16px 24px 18px;
+      position: sticky; top: 0; z-index: 100;
       backdrop-filter: blur(10px);
     }
     .header-inner { max-width: 1200px; margin: 0 auto; }
+
+    /* top row: logo + nav + stats */
     .header-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      gap: 12px;
+      display: flex; align-items: center;
+      gap: 14px; margin-bottom: 14px; flex-wrap: wrap;
     }
-    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
     .logo-icon {
-      width: 36px; height: 36px;
-      background: var(--accent);
-      border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px; flex-shrink: 0;
+      width: 34px; height: 34px; background: var(--accent);
+      border-radius: 10px; display: flex; align-items: center;
+      justify-content: center; font-size: 17px; flex-shrink: 0;
     }
-    .logo h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.3px; }
+    .logo h1 { font-size: 1.2rem; font-weight: 700; color: var(--text); }
     .logo span { color: var(--accent); }
 
-    .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    nav { display: flex; gap: 6px; margin-right: auto; }
+    .nav-link {
+      padding: 6px 14px; border-radius: var(--radius-sm);
+      font-size: .83rem; font-weight: 600; text-decoration: none;
+      color: var(--text-muted); border: 1.5px solid transparent;
+      transition: all var(--transition);
+    }
+    .nav-link:hover  { color: var(--text); border-color: var(--border); }
+    .nav-link.active { color: var(--accent); border-color: rgba(253,205,0,.3); background: rgba(253,205,0,.07); }
 
-    .stats-bar { display: flex; gap: 20px; flex-wrap: wrap; }
+    /* scraper indicator pill */
+    .scraper-pill {
+      display: none; align-items: center; gap: 7px;
+      font-size: .78rem; font-weight: 600; color: var(--accent);
+      background: rgba(253,205,0,.08); border: 1px solid rgba(253,205,0,.22);
+      border-radius: 20px; padding: 4px 12px;
+      text-decoration: none; white-space: nowrap;
+      animation: fadeIn .3s ease;
+    }
+    .scraper-pill.visible { display: flex; }
+    .scraper-pill .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent); animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+
+    .stats-bar { display: flex; gap: 18px; flex-wrap: wrap; }
     .stat { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-muted); }
     .stat-val { color: var(--accent); font-weight: 600; font-size: .85rem; }
-    .stat-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--green); animation: pulse 2s infinite;
-    }
-    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
-
-    /* ── Scrape toggle button ────────────────────────── */
-    .scrape-toggle {
-      background: var(--surface2);
-      border: 1.5px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text-dim);
-      font-size: .82rem; font-weight: 600;
-      cursor: pointer;
-      padding: 7px 14px;
-      display: flex; align-items: center; gap: 6px;
-      white-space: nowrap; flex-shrink: 0;
-      transition: border-color var(--transition), color var(--transition);
-    }
-    .scrape-toggle:hover { border-color: var(--accent); color: var(--accent); }
-    .scrape-toggle .dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--text-muted); transition: background var(--transition);
-    }
-    .scrape-toggle.running .dot { background: var(--accent); animation: pulse 1s infinite; }
-    .scrape-toggle.done    .dot { background: var(--green); }
-    .scrape-toggle.error   .dot { background: #f87171; }
-
-    /* ── Scrape panel ───────────────────────────────────── */
-    .scrape-panel {
-      margin-top: 14px;
-      background: var(--surface2);
-      border: 1.5px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px 20px;
-      display: none; flex-direction: column; gap: 12px;
-      animation: slideDown .18s ease;
-    }
-    .scrape-panel.open { display: flex; }
-    @keyframes slideDown {
-      from { opacity:0; transform: translateY(-8px); }
-      to   { opacity:1; transform: translateY(0); }
-    }
-    .scrape-panel-label {
-      font-size: .7rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 1.2px;
-      color: var(--text-muted);
-    }
-    .scrape-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .scrape-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; }
-    .scrape-field label { font-size: .72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; }
-    .scrape-input {
-      background: var(--surface3);
-      border: 1.5px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text); font-size: .95rem;
-      padding: 10px 14px; outline: none;
-      width: 100%;
-      transition: border-color var(--transition);
-    }
-    .scrape-input::placeholder { color: var(--text-muted); }
-    .scrape-input:focus { border-color: var(--accent); }
-    #scrape-start {
-      background: var(--accent); color: #000;
-      border: none; border-radius: var(--radius-sm);
-      padding: 0 22px; height: 42px;
-      font-size: .9rem; font-weight: 700; cursor: pointer;
-      white-space: nowrap; flex-shrink: 0;
-      display: flex; align-items: center; gap: 7px;
-      align-self: flex-end;
-      transition: background var(--transition), opacity var(--transition);
-    }
-    #scrape-start:hover    { background: #e6b800; }
-    #scrape-start:disabled { opacity: .5; cursor: not-allowed; background: var(--accent); }
-
-    .scrape-status {
-      font-size: .83rem; border-radius: var(--radius-sm);
-      padding: 10px 14px; display: none; gap: 10px; align-items: center;
-    }
-    .scrape-status.visible { display: flex; }
-    .scrape-status.running { background: rgba(253,205,0,.08); color: var(--accent); border: 1px solid rgba(253,205,0,.2); }
-    .scrape-status.done    { background: rgba(74,222,128,.08); color: var(--green); border: 1px solid rgba(74,222,128,.2); }
-    .scrape-status.error   { background: rgba(248,113,113,.08); color: #f87171; border: 1px solid rgba(248,113,113,.2); }
-    .scrape-spinner {
-      width: 16px; height: 16px;
-      border: 2px solid rgba(253,205,0,.3);
-      border-top-color: var(--accent); border-radius: 50%;
-      animation: spin .7s linear infinite;
-      flex-shrink: 0;
-    }
-    .timer-badge {
-      background: rgba(253,205,0,.15);
-      color: var(--accent);
-      font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums;
-      padding: 2px 8px; border-radius: 5px; flex-shrink: 0;
-    }
+    .stat-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
 
     /* ── Search ─────────────────────────────────────────── */
-    .search-wrap {
-      position: relative; display: flex; gap: 10px; align-items: center;
-      margin-top: 14px;
-    }
+    .search-wrap { display: flex; gap: 10px; align-items: center; }
     .search-field { position: relative; flex: 1; }
     .search-field svg {
       position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-      color: var(--text-muted); pointer-events: none; flex-shrink: 0;
+      color: var(--text-muted); pointer-events: none;
     }
     #search {
       width: 100%; background: var(--surface2);
       border: 1.5px solid var(--border); border-radius: var(--radius);
       color: var(--text); font-size: 1rem;
-      padding: 13px 44px 13px 44px; outline: none;
+      padding: 12px 44px 12px 44px; outline: none;
       transition: border-color var(--transition), box-shadow var(--transition);
     }
     #search::placeholder { color: var(--text-muted); }
@@ -197,7 +118,7 @@
     .clear-btn.visible { display: flex; }
     .search-btn {
       background: var(--accent); color: #000; border: none;
-      border-radius: var(--radius); padding: 0 22px; height: 48px;
+      border-radius: var(--radius); padding: 0 22px; height: 46px;
       font-size: .95rem; font-weight: 700; cursor: pointer;
       white-space: nowrap; flex-shrink: 0;
       display: flex; align-items: center; gap: 7px;
@@ -206,7 +127,7 @@
     .search-btn:hover  { background: #e6b800; }
     .search-btn:active { transform: scale(.97); }
 
-    /* ── Category chips bar ─────────────────────────────── */
+    /* ── Category chips ─────────────────────────────────── */
     .category-bar {
       display: none; align-items: center; gap: 8px;
       margin-top: 10px; flex-wrap: wrap;
@@ -217,22 +138,18 @@
       background: var(--surface2); border: 1.5px solid var(--border);
       color: var(--text-dim); font-size: .78rem; font-weight: 600;
       padding: 4px 12px; border-radius: 20px; cursor: pointer;
-      white-space: nowrap;
+      white-space: nowrap; display: flex; align-items: center; gap: 5px;
       transition: all var(--transition);
-      display: flex; align-items: center; gap: 5px;
     }
-    .cat-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .cat-chip:hover  { border-color: var(--accent); color: var(--accent); }
     .cat-chip.active { background: var(--accent); border-color: var(--accent); color: #000; }
     .cat-chip .cat-count { font-size: .7rem; opacity: .75; }
 
     /* ── Main ───────────────────────────────────────────── */
     main { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
 
-    .results-header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 18px; flex-wrap: wrap; gap: 8px;
-    }
-    .results-count { font-size: .88rem; color: var(--text-muted); }
+    .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 8px; }
+    .results-count  { font-size: .88rem; color: var(--text-muted); }
     .results-count strong { color: var(--text); }
 
     /* ── Grid ───────────────────────────────────────────── */
@@ -297,12 +214,11 @@
     .empty-icon { font-size: 3rem; margin-bottom: 16px; }
     .empty h3 { color: var(--text); margin-bottom: 8px; }
     .empty p  { color: var(--text-muted); font-size: .9rem; }
+    .empty a  { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .empty a:hover { text-decoration: underline; }
 
     /* ── Pagination ─────────────────────────────────────── */
-    .pagination {
-      display: flex; align-items: center; justify-content: center;
-      gap: 8px; margin-top: 40px; flex-wrap: wrap;
-    }
+    .pagination { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 40px; flex-wrap: wrap; }
     .pag-btn {
       background: var(--surface); border: 1px solid var(--border);
       color: var(--text); padding: 8px 16px; border-radius: var(--radius-sm);
@@ -332,22 +248,12 @@
       display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
     }
     .modal-title-wrap { flex: 1; }
-    .modal-title { font-size: 1.2rem; font-weight: 700; line-height: 1.4; margin-bottom: 8px; }
-    .modal-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .modal-price {
-      background: rgba(253,205,0,.15); color: var(--accent);
-      font-weight: 700; font-size: 1.05rem; padding: 5px 12px; border-radius: 8px;
-    }
+    .modal-title  { font-size: 1.2rem; font-weight: 700; line-height: 1.4; margin-bottom: 8px; }
+    .modal-meta   { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .modal-price  { background: rgba(253,205,0,.15); color: var(--accent); font-weight: 700; font-size: 1.05rem; padding: 5px 12px; border-radius: 8px; }
     .modal-price.no-price { background: var(--surface2); color: var(--text-muted); font-size: .8rem; font-weight: 400; }
-    .modal-category {
-      background: rgba(255,140,0,.1); color: var(--accent2);
-      font-size: .78rem; font-weight: 600; padding: 4px 10px; border-radius: 6px;
-    }
-    .modal-url {
-      color: var(--accent2); font-size: .8rem; text-decoration: none;
-      padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,140,0,.3);
-      transition: background var(--transition);
-    }
+    .modal-category { background: rgba(255,140,0,.1); color: var(--accent2); font-size: .78rem; font-weight: 600; padding: 4px 10px; border-radius: 6px; }
+    .modal-url { color: var(--accent2); font-size: .8rem; text-decoration: none; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,140,0,.3); transition: background var(--transition); }
     .modal-url:hover { background: rgba(255,140,0,.1); }
     .close-btn {
       background: var(--surface2); border: 1px solid var(--border);
@@ -357,39 +263,23 @@
       transition: all var(--transition);
     }
     .close-btn:hover { color: var(--text); border-color: var(--text-muted); }
-    .modal-body {
-      overflow-y: auto; padding: 20px 24px 24px;
-      display: flex; flex-direction: column; gap: 24px;
-    }
+    .modal-body { overflow-y: auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 24px; }
     .modal-body::-webkit-scrollbar { width: 6px; }
     .modal-body::-webkit-scrollbar-track { background: transparent; }
     .modal-body::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
-    .section-label {
-      font-size: .7rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 10px;
-      display: flex; align-items: center; gap: 8px;
-    }
+    .section-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
     .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
     .section-text { font-size: .88rem; color: var(--text-dim); line-height: 1.75; white-space: pre-wrap; }
-    .modal-loading {
-      display: flex; align-items: center; justify-content: center;
-      padding: 60px 20px; color: var(--text-muted); gap: 12px;
-    }
-    .spinner {
-      width: 22px; height: 22px;
-      border: 2px solid var(--surface3); border-top-color: var(--accent);
-      border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0;
-    }
+    .modal-loading { display: flex; align-items: center; justify-content: center; padding: 60px 20px; color: var(--text-muted); gap: 12px; }
+    .spinner { width: 22px; height: 22px; border: 2px solid var(--surface3); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Responsive ─────────────────────────────────────── */
     @media (max-width: 640px) {
-      header { padding: 16px 16px 18px; }
+      header { padding: 14px 16px 16px; }
       main   { padding: 16px 14px 48px; }
       .modal-header, .modal-body { padding-left: 18px; padding-right: 18px; }
       .grid  { grid-template-columns: 1fr; }
-      .scrape-row { flex-direction: column; align-items: stretch; }
-      #scrape-start { align-self: stretch; justify-content: center; }
     }
   </style>
 </head>
@@ -399,47 +289,23 @@
 <header>
   <div class="header-inner">
     <div class="header-top">
-      <div class="logo">
+      <a class="logo" href="/">
         <div class="logo-icon">🔍</div>
         <h1>Njuskalo <span>Scraper</span></h1>
-      </div>
-      <div class="header-right">
-        <div class="stats-bar" id="stats-bar">
-          <div class="stat"><div class="stat-dot"></div><span>Loading...</span></div>
-        </div>
-        <button class="scrape-toggle" id="scrape-toggle" title="Run scraper">
-          <span class="dot"></span> Scrape
-        </button>
+      </a>
+      <nav>
+        <a class="nav-link active" href="/">Listings</a>
+        <a class="nav-link" href="/scraper">Scraper</a>
+      </nav>
+      <a class="scraper-pill" id="scraper-pill" href="/scraper">
+        <span class="dot"></span> Scraping…
+      </a>
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat"><div class="stat-dot"></div><span>Loading...</span></div>
       </div>
     </div>
 
-    <!-- ── Scrape panel ──────────────────────────────────── -->
-    <div class="scrape-panel" id="scrape-panel">
-      <div class="scrape-panel-label">Run Scraper</div>
-      <div class="scrape-row">
-        <div class="scrape-field">
-          <label for="scrape-query">Search query</label>
-          <input id="scrape-query" class="scrape-input" type="text"
-                 placeholder="e.g. volkswagen golf, iphone 14, mac mini…"
-                 autocomplete="off" />
-        </div>
-        <div class="scrape-field">
-          <label for="scrape-category">Category</label>
-          <input id="scrape-category" class="scrape-input" type="text"
-                 list="categories-list"
-                 placeholder="e.g. Cars, Phones, SSD drives…"
-                 autocomplete="off" />
-          <datalist id="categories-list"></datalist>
-        </div>
-        <button id="scrape-start">
-          <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Start
-        </button>
-      </div>
-      <div class="scrape-status" id="scrape-status"></div>
-    </div>
-
-    <!-- ── Search ────────────────────────────────────────── -->
+    <!-- Search bar -->
     <div class="search-wrap">
       <div class="search-field">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
@@ -456,7 +322,7 @@
       </button>
     </div>
 
-    <!-- ── Category chips ────────────────────────────────── -->
+    <!-- Category chips -->
     <div class="category-bar" id="category-bar">
       <span class="cat-label">Category:</span>
       <div id="cat-chips"></div>
@@ -475,7 +341,7 @@
 
 <!-- ═══ MODAL ═════════════════════════════════════════════════════════════════ -->
 <div class="overlay" id="overlay">
-  <div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="modal" role="dialog" aria-modal="true">
     <div id="modal-content"></div>
   </div>
 </div>
@@ -500,6 +366,7 @@ const overlay       = document.getElementById('overlay');
 const modalContent  = document.getElementById('modal-content');
 const categoryBar   = document.getElementById('category-bar');
 const catChipsEl    = document.getElementById('cat-chips');
+const scraperPill   = document.getElementById('scraper-pill');
 
 /* ─── Utils ─────────────────────────────────────────────────────────────────── */
 function fmt(dateStr) {
@@ -510,13 +377,6 @@ function fmt(dateStr) {
 }
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function fmtElapsed(startIso) {
-  if (!startIso) return '00:00';
-  const secs = Math.floor((Date.now() - new Date(startIso).getTime()) / 1000);
-  const m = String(Math.floor(secs / 60)).padStart(2, '0');
-  const s = String(secs % 60).padStart(2, '0');
-  return `${m}:${s}`;
 }
 
 /* ─── Stats ─────────────────────────────────────────────────────────────────── */
@@ -536,32 +396,35 @@ async function loadStats() {
   } catch { /* ignore */ }
 }
 
+/* ─── Scraper pill (running indicator) ──────────────────────────────────────── */
+async function checkScraperStatus() {
+  try {
+    const r = await fetch('/api/scrape/status');
+    const j = await r.json();
+    scraperPill.classList.toggle('visible', j.status === 'running');
+    if (j.status === 'running') {
+      scraperPill.innerHTML = `<span class="dot"></span> Scraping: <strong>${esc(j.query)}</strong>`;
+    }
+  } catch { /* ignore */ }
+}
+
 /* ─── Categories ─────────────────────────────────────────────────────────────── */
 async function loadCategories() {
   try {
     const r    = await fetch('/api/categories');
-    const cats = await r.json(); // [{ category, count }]
+    const cats = await r.json();
 
-    // Populate datalist for scrape panel autocomplete
-    const dl = document.getElementById('categories-list');
-    dl.innerHTML = cats.map(c => `<option value="${esc(c.category)}">`).join('');
-
-    // Render category filter chips
     if (cats.length === 0) { categoryBar.classList.remove('visible'); return; }
 
     categoryBar.classList.add('visible');
     catChipsEl.innerHTML = `
-      <button class="cat-chip ${currentCategory === '' ? 'active' : ''}" data-cat="">
-        All
-      </button>
+      <button class="cat-chip ${currentCategory === '' ? 'active' : ''}" data-cat="">All</button>
       ${cats.map(c => `
         <button class="cat-chip ${currentCategory === c.category ? 'active' : ''}" data-cat="${esc(c.category)}">
-          ${esc(c.category)}
-          <span class="cat-count">${c.count}</span>
+          ${esc(c.category)}<span class="cat-count">${c.count}</span>
         </button>
       `).join('')}
     `;
-
     catChipsEl.querySelectorAll('.cat-chip').forEach(btn => {
       btn.addEventListener('click', () => {
         currentCategory = btn.dataset.cat;
@@ -589,17 +452,16 @@ function showSkeletons(n = 12) {
 /* ─── Fetch listings ────────────────────────────────────────────────────────── */
 async function fetchListings(query = '', page = 1) {
   showSkeletons();
-  pagEl.innerHTML   = '';
-  countEl.innerHTML = '';
+  pagEl.innerHTML = ''; countEl.innerHTML = '';
 
   const params = new URLSearchParams({ page, limit: 24 });
-  if (query)           params.set('q',        query);
+  if (query)           params.set('q', query);
   if (currentCategory) params.set('category', currentCategory);
 
   try {
     const res  = await fetch(`/api/listings?${params}`);
     const json = await res.json();
-    renderGrid(json.data, query);
+    renderGrid(json.data);
     renderPagination(json.pagination);
     totalPages = json.pagination.totalPages;
     const { total, page: pg, totalPages: tp } = json.pagination;
@@ -609,23 +471,22 @@ async function fetchListings(query = '', page = 1) {
     if (currentCategory) label += ` in category <strong>${esc(currentCategory)}</strong>`;
 
     countEl.innerHTML = total === 0
-      ? 'No results found'
+      ? `No results found${label}. <a href="/scraper">Scrape new listings →</a>`
       : `Showing <strong>${json.data.length}</strong> of <strong>${total}</strong> listings${label} — page ${pg}/${tp}`;
   } catch (err) {
     gridEl.innerHTML = `<div class="empty" style="grid-column:1/-1">
-      <div class="empty-icon">⚠️</div><h3>Failed to load</h3>
-      <p>${esc(err.message)}</p>
+      <div class="empty-icon">⚠️</div><h3>Failed to load</h3><p>${esc(err.message)}</p>
     </div>`;
   }
 }
 
 /* ─── Render grid ───────────────────────────────────────────────────────────── */
-function renderGrid(items, query) {
+function renderGrid(items) {
   if (!items.length) {
     gridEl.innerHTML = `<div class="empty">
       <div class="empty-icon">🔎</div>
       <h3>No results found</h3>
-      <p>Try a different search term or category.</p>
+      <p>Try a different search term, or <a href="/scraper">run a new scrape job</a>.</p>
     </div>`;
     return;
   }
@@ -633,14 +494,12 @@ function renderGrid(items, query) {
     const priceHtml = item.price
       ? `<div class="card-price">${esc(item.price)}</div>`
       : `<div class="card-price no-price">Price not listed</div>`;
-    const catHtml = item.category
-      ? `<div class="card-category">🏷 ${esc(item.category)}</div>` : '';
+    const catHtml = item.category ? `<div class="card-category">🏷 ${esc(item.category)}</div>` : '';
     const preview = (item.description_preview ?? '').replace(/\s+/g,' ').trim();
     return `
       <div class="card" data-id="${item.id}" tabindex="0" role="button" aria-label="${esc(item.title)}">
         <div class="card-title">${esc(item.title ?? '(no title)')}</div>
-        ${priceHtml}
-        ${catHtml}
+        ${priceHtml}${catHtml}
         ${preview ? `<div class="card-preview">${esc(preview)}</div>` : ''}
         <div class="card-footer">
           <span class="card-date">${fmt(item.created_at)}</span>
@@ -707,7 +566,7 @@ async function openModal(id) {
         ${infoText ? `<div><div class="section-label">Basic Info</div><div class="section-text">${esc(infoText)}</div></div>` : ''}
         ${descText ? `<div><div class="section-label">Description</div><div class="section-text">${esc(descText)}</div></div>` : ''}
         ${!infoText && !descText ? `<div class="empty"><div class="empty-icon">📄</div><p>No details available.</p></div>` : ''}
-        <div class="stat" style="font-size:.75rem;color:var(--text-muted);">Added: ${fmt(item.created_at)}</div>
+        <div style="font-size:.75rem;color:var(--text-muted);">Added: ${fmt(item.created_at)}</div>
       </div>`;
     document.getElementById('close-modal').addEventListener('click', closeModal);
   } catch (err) {
@@ -741,147 +600,23 @@ searchEl.addEventListener('input', () => {
 searchEl.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 searchBtn.addEventListener('click', doSearch);
 clearBtn.addEventListener('click', () => {
-  searchEl.value = '';
-  clearBtn.classList.remove('visible');
+  searchEl.value = ''; clearBtn.classList.remove('visible');
   currentQuery = ''; currentPage = 1;
   fetchListings('', 1); searchEl.focus();
 });
 overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-/* ─── Scrape panel ──────────────────────────────────────────────────────────── */
-const scrapeToggle  = document.getElementById('scrape-toggle');
-const scrapePanel   = document.getElementById('scrape-panel');
-const scrapeQueryEl = document.getElementById('scrape-query');
-const scrapeCatEl   = document.getElementById('scrape-category');
-const scrapeStart   = document.getElementById('scrape-start');
-const scrapeStatus  = document.getElementById('scrape-status');
-
-let pollTimer     = null;
-let timerInterval = null;
-let jobStartedAt  = null;
-
-scrapeToggle.addEventListener('click', () => {
-  scrapePanel.classList.toggle('open');
-  if (scrapePanel.classList.contains('open')) scrapeQueryEl.focus();
-});
-scrapeQueryEl.addEventListener('keydown', e => { if (e.key === 'Enter') startScrape(); });
-scrapeCatEl.addEventListener('keydown',   e => { if (e.key === 'Enter') startScrape(); });
-scrapeStart.addEventListener('click', startScrape);
-
-async function startScrape() {
-  const q   = scrapeQueryEl.value.trim();
-  const cat = scrapeCatEl.value.trim();
-  if (!q) { scrapeQueryEl.focus(); return; }
-
-  scrapeStart.disabled = true;
-  jobStartedAt = new Date().toISOString();
-  startTimerInterval();
-  showScrapeStatus('running', buildRunningMsg(q, cat, jobStartedAt));
-  updateToggleDot('running');
-
-  try {
-    const res  = await fetch('/api/scrape', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: q, category: cat || undefined }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-    pollScrapeStatus();
-  } catch (err) {
-    stopTimerInterval();
-    showScrapeStatus('error', `Error: ${esc(err.message)}`);
-    updateToggleDot('error');
-    scrapeStart.disabled = false;
-  }
-}
-
-/* ─── Timer ─────────────────────────────────────────────────────────────────── */
-function startTimerInterval() {
-  stopTimerInterval();
-  timerInterval = setInterval(() => {
-    const badge = document.getElementById('elapsed-timer');
-    if (badge && jobStartedAt) badge.textContent = fmtElapsed(jobStartedAt);
-  }, 1000);
-}
-function stopTimerInterval() {
-  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-}
-
-function buildRunningMsg(query, cat, startIso) {
-  const catPart = cat ? ` | Category: <strong>${esc(cat)}</strong>` : '';
-  return `
-    <div class="scrape-spinner"></div>
-    <span>Scraping: <strong>${esc(query)}</strong>${catPart}</span>
-    <span class="timer-badge" id="elapsed-timer">${fmtElapsed(startIso)}</span>`;
-}
-
-/* ─── Poll job status ───────────────────────────────────────────────────────── */
-function pollScrapeStatus() {
-  clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
-    try {
-      const res = await fetch('/api/scrape/status');
-      const job = await res.json();
-
-      if (job.status === 'running') {
-        if (!jobStartedAt) { jobStartedAt = job.startedAt; startTimerInterval(); }
-        showScrapeStatus('running', buildRunningMsg(job.query, job.category, job.startedAt));
-        updateToggleDot('running');
-      } else if (job.status === 'done') {
-        clearInterval(pollTimer); stopTimerInterval();
-        const msg = job.saved > 0
-          ? `✅ Done! Added <strong>${job.saved}</strong> new listings for "${esc(job.query)}".`
-          : `✅ Done! No new listings for "${esc(job.query)}" (already in database).`;
-        showScrapeStatus('done', msg);
-        updateToggleDot('done');
-        scrapeStart.disabled = false;
-        jobStartedAt = null;
-        // Refresh stats, categories and listings automatically
-        loadStats(); loadCategories(); fetchListings(currentQuery, currentPage);
-      } else if (job.status === 'error') {
-        clearInterval(pollTimer); stopTimerInterval();
-        showScrapeStatus('error', `❌ Error: ${esc(job.error ?? 'unknown error')}`);
-        updateToggleDot('error');
-        scrapeStart.disabled = false;
-        jobStartedAt = null;
-      }
-    } catch { /* network hiccup — retry next tick */ }
-  }, 3000);
-}
-
-function showScrapeStatus(type, html) {
-  scrapeStatus.className = `scrape-status visible ${type}`;
-  scrapeStatus.innerHTML = html;
-}
-function updateToggleDot(state) {
-  scrapeToggle.className = `scrape-toggle ${state}`;
-}
-
-/* ─── Restore running job on page load ──────────────────────────────────────── */
-(async () => {
-  try {
-    const res = await fetch('/api/scrape/status');
-    const job = await res.json();
-    if (job.status === 'running') {
-      scrapePanel.classList.add('open');
-      scrapeStart.disabled = true;
-      jobStartedAt = job.startedAt;
-      startTimerInterval();
-      showScrapeStatus('running', buildRunningMsg(job.query, job.category, job.startedAt));
-      updateToggleDot('running');
-      pollScrapeStatus();
-    } else if (job.status === 'done' || job.status === 'error') {
-      updateToggleDot(job.status);
-    }
-  } catch { /* ignore */ }
-})();
-
 /* ─── Init ──────────────────────────────────────────────────────────────────── */
 loadStats();
 loadCategories();
 fetchListings();
+checkScraperStatus();
+// Poll scraper status every 5s to show/hide the running pill
+setInterval(() => {
+  checkScraperStatus();
+  loadStats();
+}, 5000);
 </script>
 </body>
 </html>

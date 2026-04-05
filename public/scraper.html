@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scraper Control — Njuskalo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0d0f18;
+      --surface:    #161927;
+      --surface2:   #1e2235;
+      --surface3:   #252a40;
+      --accent:     #fdcd00;
+      --accent2:    #ff8c00;
+      --text:       #e4e8f4;
+      --text-muted: #6b738f;
+      --text-dim:   #9099b5;
+      --border:     #252a40;
+      --green:      #4ade80;
+      --red:        #f87171;
+      --radius:     14px;
+      --radius-sm:  8px;
+      --shadow:     0 8px 32px rgba(0,0,0,.55);
+      --transition: .18s ease;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── Header ───────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #161927 0%, #1a1e30 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 24px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-icon {
+      width: 34px; height: 34px; background: var(--accent);
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
+      font-size: 17px; flex-shrink: 0;
+    }
+    .logo h1 { font-size: 1.15rem; font-weight: 700; color: var(--text); }
+    .logo span { color: var(--accent); }
+
+    nav { display: flex; gap: 6px; }
+    .nav-link {
+      padding: 7px 16px; border-radius: var(--radius-sm);
+      font-size: .85rem; font-weight: 600; text-decoration: none;
+      color: var(--text-muted); border: 1.5px solid transparent;
+      transition: all var(--transition);
+    }
+    .nav-link:hover { color: var(--text); border-color: var(--border); }
+    .nav-link.active { color: var(--accent); border-color: rgba(253,205,0,.3); background: rgba(253,205,0,.07); }
+
+    /* ── Layout ───────────────────────────────────────────── */
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; display: grid; gap: 24px; }
+
+    /* ── Card ─────────────────────────────────────────────── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px 28px;
+    }
+    .card-title {
+      font-size: .7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── Stats grid ───────────────────────────────────────── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+    .stat-box {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 16px 18px;
+    }
+    .stat-box-label { font-size: .72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+    .stat-box-value { font-size: 1.75rem; font-weight: 800; color: var(--accent); line-height: 1; }
+    .stat-box-sub { font-size: .75rem; color: var(--text-muted); margin-top: 4px; }
+
+    /* ── Category breakdown ───────────────────────────────── */
+    .cat-list { display: flex; flex-direction: column; gap: 8px; }
+    .cat-row {
+      display: flex; align-items: center; gap: 12px;
+      font-size: .88rem;
+    }
+    .cat-name { flex: 1; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cat-bar-wrap { flex: 2; background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; }
+    .cat-bar { height: 100%; border-radius: 4px; background: var(--accent); transition: width .5s ease; }
+    .cat-count { font-size: .8rem; font-weight: 700; color: var(--accent); min-width: 28px; text-align: right; }
+
+    /* ── Scrape form ──────────────────────────────────────── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); }
+    .field input {
+      background: var(--surface2); border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-size: .95rem;
+      padding: 11px 14px; outline: none; width: 100%;
+      transition: border-color var(--transition);
+    }
+    .field input::placeholder { color: var(--text-muted); }
+    .field input:focus { border-color: var(--accent); }
+
+    .btn-start {
+      grid-column: 1 / -1;
+      background: var(--accent); color: #000; border: none;
+      border-radius: var(--radius-sm); height: 46px;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background var(--transition), opacity var(--transition);
+    }
+    .btn-start:hover    { background: #e6b800; }
+    .btn-start:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Status block ─────────────────────────────────────── */
+    .status-block {
+      border-radius: var(--radius-sm); padding: 14px 18px;
+      display: none; gap: 12px; align-items: center; flex-wrap: wrap;
+    }
+    .status-block.visible { display: flex; }
+    .status-block.running { background: rgba(253,205,0,.07); border: 1px solid rgba(253,205,0,.2); color: var(--accent); }
+    .status-block.done    { background: rgba(74,222,128,.07);  border: 1px solid rgba(74,222,128,.2);  color: var(--green); }
+    .status-block.error   { background: rgba(248,113,113,.07); border: 1px solid rgba(248,113,113,.2); color: var(--red); }
+
+    .status-msg { flex: 1; font-size: .88rem; line-height: 1.5; }
+    .timer {
+      font-size: .8rem; font-weight: 700; font-variant-numeric: tabular-nums;
+      background: rgba(0,0,0,.25); padding: 3px 10px; border-radius: 6px;
+      min-width: 52px; text-align: center;
+    }
+    .spinner {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2px solid rgba(253,205,0,.3); border-top-color: var(--accent);
+      animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── History table ────────────────────────────────────── */
+    .history-empty { color: var(--text-muted); font-size: .88rem; padding: 8px 0; }
+    .history-row {
+      display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      font-size: .85rem;
+    }
+    .history-row:last-child { border-bottom: none; }
+    .h-query { font-weight: 600; color: var(--text); }
+    .h-cat { color: var(--accent2); font-size: .78rem; background: rgba(255,140,0,.1); padding: 2px 7px; border-radius: 4px; }
+    .h-saved { color: var(--green); font-weight: 700; }
+    .h-err { color: var(--red); }
+    .h-time { color: var(--text-muted); font-size: .78rem; margin-left: auto; white-space: nowrap; }
+    .h-dur { color: var(--text-muted); font-size: .78rem; }
+
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .btn-start { grid-column: 1; }
+      main { padding: 20px 14px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ HEADER ═══════════════════════════════════════════════ -->
+<header>
+  <div class="header-inner">
+    <a class="logo" href="/">
+      <div class="logo-icon">🔍</div>
+      <h1>Njuskalo <span>Scraper</span></h1>
+    </a>
+    <nav>
+      <a class="nav-link" href="/">Listings</a>
+      <a class="nav-link active" href="/scraper">Scraper</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ══ MAIN ══════════════════════════════════════════════════ -->
+<main>
+
+  <!-- ── Stats ─────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">Database Stats</div>
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-box"><div class="stat-box-label">Total listings</div><div class="stat-box-value" id="s-total">—</div></div>
+      <div class="stat-box"><div class="stat-box-label">With price</div><div class="stat-box-value" id="s-price">—</div></div>
+      <div class="stat-box"><div class="stat-box-label">Categories</div><div class="stat-box-value" id="s-cats">—</div></div>
+      <div class="stat-box"><div class="stat-box-label">Last scraped</div><div class="stat-box-value" style="font-size:1.1rem" id="s-last">—</div><div class="stat-box-sub" id="s-last-sub"></div></div>
+    </div>
+  </div>
+
+  <!-- ── Category breakdown ─────────────────────────────────── -->
+  <div class="card" id="cat-card" style="display:none">
+    <div class="card-title">Listings by Category</div>
+    <div class="cat-list" id="cat-list"></div>
+  </div>
+
+  <!-- ── Scrape form ────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">Run New Scrape Job</div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="q-input">Search query</label>
+        <input id="q-input" type="text" placeholder="e.g. volkswagen golf, iphone 14, ssd…" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="cat-input">Category <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input id="cat-input" type="text" list="cat-dl" placeholder="e.g. Cars, Phones, Electronics…" autocomplete="off" />
+        <datalist id="cat-dl"></datalist>
+      </div>
+      <button class="btn-start" id="btn-start">
+        <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Start Scraping
+      </button>
+    </div>
+    <div style="margin-top:14px">
+      <div class="status-block" id="status-block">
+        <div class="spinner" id="status-spinner" style="display:none"></div>
+        <div class="status-msg" id="status-msg"></div>
+        <div class="timer" id="status-timer" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── History ────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">Scrape History <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.8rem;color:var(--text-muted)">(this session)</span></div>
+    <div id="history-list"><div class="history-empty">No jobs run yet this session.</div></div>
+  </div>
+
+</main>
+
+<script>
+/* ─── State ──────────────────────────────────────────────── */
+const history = [];
+let pollTimer    = null;
+let timerInterval = null;
+let jobStartedAt = null;
+
+/* ─── DOM ────────────────────────────────────────────────── */
+const qInput      = document.getElementById('q-input');
+const catInput    = document.getElementById('cat-input');
+const btnStart    = document.getElementById('btn-start');
+const statusBlock = document.getElementById('status-block');
+const statusMsg   = document.getElementById('status-msg');
+const statusTimer = document.getElementById('status-timer');
+const statusSpinner = document.getElementById('status-spinner');
+const historyList = document.getElementById('history-list');
+
+/* ─── Utils ──────────────────────────────────────────────── */
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function elapsed(isoStart) {
+  if (!isoStart) return '00:00';
+  const s = Math.floor((Date.now() - new Date(isoStart).getTime()) / 1000);
+  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+}
+function duration(isoStart, isoEnd) {
+  if (!isoStart || !isoEnd) return '';
+  const s = Math.floor((new Date(isoEnd) - new Date(isoStart)) / 1000);
+  const m = Math.floor(s / 60), sec = s % 60;
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+/* ─── Stats ──────────────────────────────────────────────── */
+async function loadStats() {
+  try {
+    const [sRes, cRes] = await Promise.all([fetch('/api/stats'), fetch('/api/categories')]);
+    const s = await sRes.json();
+    const cats = await cRes.json();
+
+    document.getElementById('s-total').textContent = s.total ?? '0';
+    document.getElementById('s-price').textContent = s.with_price ?? '0';
+    document.getElementById('s-cats').textContent  = cats.length;
+    if (s.last_scraped) {
+      document.getElementById('s-last').textContent    = s.last_scraped.split(' ')[0];
+      document.getElementById('s-last-sub').textContent = s.last_scraped.split(' ')[1] ?? '';
+    }
+
+    // Category breakdown
+    if (cats.length > 0) {
+      const max = Math.max(...cats.map(c => parseInt(c.count)));
+      const catCard = document.getElementById('cat-card');
+      const catList = document.getElementById('cat-list');
+      catCard.style.display = '';
+      catList.innerHTML = cats.map(c => {
+        const pct = Math.round(parseInt(c.count) / max * 100);
+        return `
+          <div class="cat-row">
+            <span class="cat-name">${esc(c.category)}</span>
+            <div class="cat-bar-wrap"><div class="cat-bar" style="width:${pct}%"></div></div>
+            <span class="cat-count">${c.count}</span>
+          </div>`;
+      }).join('');
+
+      // Populate datalist
+      document.getElementById('cat-dl').innerHTML =
+        cats.map(c => `<option value="${esc(c.category)}">`).join('');
+    }
+  } catch { /* ignore */ }
+}
+
+/* ─── History rendering ──────────────────────────────────── */
+function renderHistory() {
+  if (history.length === 0) {
+    historyList.innerHTML = '<div class="history-empty">No jobs run yet this session.</div>';
+    return;
+  }
+  historyList.innerHTML = [...history].reverse().map(j => {
+    const badge   = j.category ? `<span class="h-cat">${esc(j.category)}</span>` : '';
+    const dur     = j.finishedAt ? `<span class="h-dur">· ${duration(j.startedAt, j.finishedAt)}</span>` : '';
+    const outcome = j.status === 'done'
+      ? `<span class="h-saved">+${j.saved} saved</span>`
+      : j.status === 'error'
+        ? `<span class="h-err">error</span>`
+        : `<span style="color:var(--accent)">running…</span>`;
+    return `
+      <div class="history-row">
+        <span class="h-query">${esc(j.query)}</span>
+        ${badge}
+        ${outcome}
+        ${dur}
+        <span class="h-time">${fmtDate(j.startedAt)}</span>
+      </div>`;
+  }).join('');
+}
+
+/* ─── Status UI helpers ──────────────────────────────────── */
+function showStatus(type, html) {
+  statusBlock.className = `status-block visible ${type}`;
+  statusMsg.innerHTML   = html;
+  statusSpinner.style.display = type === 'running' ? 'block' : 'none';
+  statusTimer.style.display   = type === 'running' ? 'block' : 'none';
+}
+
+function startTimer(isoStart) {
+  stopTimer();
+  jobStartedAt = isoStart;
+  statusTimer.textContent = elapsed(isoStart);
+  timerInterval = setInterval(() => {
+    statusTimer.textContent = elapsed(jobStartedAt);
+  }, 1000);
+}
+function stopTimer() {
+  clearInterval(timerInterval); timerInterval = null;
+  statusTimer.style.display = 'none';
+}
+
+/* ─── Polling ────────────────────────────────────────────── */
+function startPolling() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await fetch('/api/scrape/status');
+      const job = await res.json();
+
+      // Update the last history entry (the running one)
+      if (history.length && history[history.length - 1].status === 'running') {
+        history[history.length - 1] = { ...history[history.length - 1], ...job };
+      }
+
+      if (job.status === 'running') {
+        showStatus('running', `Scraping: <strong>${esc(job.query)}</strong>${job.category ? ` &nbsp;·&nbsp; category: <strong>${esc(job.category)}</strong>` : ''}`);
+      } else if (job.status === 'done' || job.status === 'error') {
+        clearInterval(pollTimer);
+        stopTimer();
+        btnStart.disabled = false;
+
+        if (job.status === 'done') {
+          showStatus('done', `✅ Done — <strong>${job.saved}</strong> new listings added for <strong>${esc(job.query)}</strong>.`);
+        } else {
+          showStatus('error', `❌ Error: ${esc(job.error ?? 'unknown error')}`);
+        }
+
+        renderHistory();
+        loadStats(); // refresh numbers
+      }
+    } catch { /* retry */ }
+  }, 2500);
+}
+
+/* ─── Start job ──────────────────────────────────────────── */
+async function startScrape() {
+  const q   = qInput.value.trim();
+  const cat = catInput.value.trim();
+  if (!q) { qInput.focus(); return; }
+
+  btnStart.disabled = true;
+  const startedAt = new Date().toISOString();
+
+  showStatus('running', `Scraping: <strong>${esc(q)}</strong>${cat ? ` &nbsp;·&nbsp; category: <strong>${esc(cat)}</strong>` : ''}`);
+  startTimer(startedAt);
+
+  const jobEntry = { query: q, category: cat || null, status: 'running', startedAt, finishedAt: null, saved: 0, error: null };
+  history.push(jobEntry);
+  renderHistory();
+
+  try {
+    const res  = await fetch('/api/scrape', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ query: q, category: cat || undefined }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    startPolling();
+  } catch (err) {
+    stopTimer();
+    btnStart.disabled = false;
+    history[history.length - 1].status = 'error';
+    history[history.length - 1].error  = err.message;
+    renderHistory();
+    showStatus('error', `❌ ${esc(err.message)}`);
+  }
+}
+
+/* ─── Events ─────────────────────────────────────────────── */
+btnStart.addEventListener('click', startScrape);
+qInput.addEventListener('keydown',   e => { if (e.key === 'Enter') startScrape(); });
+catInput.addEventListener('keydown', e => { if (e.key === 'Enter') startScrape(); });
+
+/* ─── Restore running job on load ────────────────────────── */
+(async () => {
+  try {
+    const res = await fetch('/api/scrape/status');
+    const job = await res.json();
+    if (job.status === 'running') {
+      btnStart.disabled = true;
+      showStatus('running', `Scraping: <strong>${esc(job.query)}</strong>${job.category ? ` &nbsp;·&nbsp; category: <strong>${esc(job.category)}</strong>` : ''}`);
+      startTimer(job.startedAt);
+      history.push({ ...job });
+      renderHistory();
+      startPolling();
+    }
+  } catch { /* ignore */ }
+})();
+
+/* ─── Init ───────────────────────────────────────────────── */
+loadStats();
+</script>
+</body>
+</html>

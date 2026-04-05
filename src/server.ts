@@ -191,7 +191,12 @@ app.get('/api/listings/:id', async (req: Request, res: Response) => {
   }
 });
 
-// ─── SPA fallback ─────────────────────────────────────────────────────────────
+// ─── Page routes ──────────────────────────────────────────────────────────────
+app.get('/scraper', (_req: Request, res: Response) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'scraper.html'));
+});
+
+// SPA fallback — all other routes serve the listings page
 app.get('*', (_req: Request, res: Response) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
