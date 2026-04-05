@@ -16,6 +16,17 @@ interface ScraperContext {
   page: Page;
 }
 
+export interface ScraperProgress {
+  stage:        'collecting' | 'parsing';
+  // Stage 1
+  linksFound:   number;   // URLs collected so far (grows while paginating)
+  pagesScanned: number;   // search-result pages visited
+  // Stage 2
+  totalLinks:   number;   // total URLs to parse (set when stage 1 finishes)
+  linksParsed:  number;   // URLs already parsed
+  currentUrl:   string;   // URL being processed right now
+}
+
 // ─── Browser Bootstrap ────────────────────────────────────────────────────────
 
 /**
@@ -78,7 +89,6 @@ export async function createBrowser(): Promise<ScraperContext> {
 
 /**
  * Collect listing URLs from ONE search-results page.
- * Returns the URLs found and whether a next page likely exists.
  */
 async function getUrlsFromResultsPage(
   page: Page,
@@ -111,10 +121,8 @@ async function getUrlsFromResultsPage(
 
   console.log(`[Stage 1] Found ${urls.length} URLs on page ${pageNum}.`);
 
-  // No URLs → we're past the last page
   if (urls.length === 0) return { urls: [], hasMore: false };
 
-  // Also check DOM for a "next" link as confirmation
   const hasNextDom = await page.evaluate((): boolean => {
     const selectors = [
       'a[rel="next"]',
@@ -145,10 +153,7 @@ export async function parseListing(page: Page, url: string): Promise<Listing> {
     });
   });
 
-  // Accept cookie consent if present
   await dismissCookieBanner(page);
-
-  // Scroll to reveal lazy-loaded content
   await humanScroll(page);
   await randomDelay(1_000, 2_500);
 
@@ -165,9 +170,7 @@ export async function parseListing(page: Page, url: string): Promise<Listing> {
 async function getTitle(page: Page): Promise<string | null> {
   try {
     const selectors = [
-      // ── Confirmed on live page ──────────────────────────────
-      'h1.ClassifiedDetailSummary-title',            // primary — "VW Eos 2,0 TDI"
-      // ── Legacy / other layouts ──────────────────────────────
+      'h1.ClassifiedDetailSummary-title',
       'h1.classified-title',
       'h1[itemprop="name"]',
       'h1',
@@ -188,10 +191,8 @@ async function getTitle(page: Page): Promise<string | null> {
 async function getPrice(page: Page): Promise<string | null> {
   try {
     const selectors = [
-      // ── Confirmed on live page ──────────────────────────────
-      'dd.ClassifiedDetailSummary-priceDomestic',   // primary — "8.600 €"
-      '.ClassifiedDetailSummary-priceRow dd',        // fallback row
-      // ── Legacy / other layouts ──────────────────────────────
+      'dd.ClassifiedDetailSummary-priceDomestic',
+      '.ClassifiedDetailSummary-priceRow dd',
       '.price-box strong',
       '.ClassifiedDetailSummary-price',
       '[itemprop="price"]',
@@ -217,14 +218,11 @@ async function getPrice(page: Page): Promise<string | null> {
  */
 export async function getInfoBlock(page: Page): Promise<string | null> {
   try {
-    // Multiple selectors to handle different page layouts
     const result = await page.evaluate((): string | null => {
-      // Strategy 1: Find section with heading "Osnovne informacije"
       const headings = Array.from(document.querySelectorAll('h2, h3, h4, strong, .section-title, .ClassifiedDetailBasicDetails-title'));
       for (const heading of headings) {
         const text = heading.textContent ?? '';
         if (/osnovne\s+informacije/i.test(text)) {
-          // Walk up to find the containing block, then get ALL its text
           const container =
             heading.closest('section') ??
             heading.closest('.ClassifiedDetailBasicDetails') ??
@@ -234,8 +232,6 @@ export async function getInfoBlock(page: Page): Promise<string | null> {
           if (container) return (container.textContent ?? '').replace(/\s+/g, ' ').trim();
         }
       }
-
-      // Strategy 2: Known class names
       const knownSelectors = [
         '.ClassifiedDetailBasicDetails',
         '.classified-details-basic',
@@ -246,10 +242,8 @@ export async function getInfoBlock(page: Page): Promise<string | null> {
         const el = document.querySelector(sel);
         if (el) return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
       }
-
       return null;
     });
-
     return result;
   } catch (err) {
     console.warn('[Parser] getInfoBlock error:', (err as Error).message);
@@ -263,7 +257,6 @@ export async function getInfoBlock(page: Page): Promise<string | null> {
 export async function getDescription(page: Page): Promise<string | null> {
   try {
     const result = await page.evaluate((): string | null => {
-      // Strategy 1: Find section with heading "Opis oglasa"
       const headings = Array.from(document.querySelectorAll('h2, h3, h4, strong, .section-title, .ClassifiedDetailDescription-title'));
       for (const heading of headings) {
         const text = heading.textContent ?? '';
@@ -277,8 +270,6 @@ export async function getDescription(page: Page): Promise<string | null> {
           if (container) return (container.textContent ?? '').replace(/\s+/g, ' ').trim();
         }
       }
-
-      // Strategy 2: Known class names
       const knownSelectors = [
         '.ClassifiedDetailDescription',
         '.classified-description',
@@ -290,10 +281,8 @@ export async function getDescription(page: Page): Promise<string | null> {
         const el = document.querySelector(sel);
         if (el) return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
       }
-
       return null;
     });
-
     return result;
   } catch (err) {
     console.warn('[Parser] getDescription error:', (err as Error).message);
@@ -332,86 +321,130 @@ async function dismissCookieBanner(page: Page): Promise<void> {
 // ─── Main Orchestrator ────────────────────────────────────────────────────────
 
 /**
- * Run the full scraping pipeline.
+ * Run the full two-stage scraping pipeline for a single search URL.
  *
- * Flow (per search-results page):
- *   1. Load results page → collect listing URLs
- *   2. Immediately parse & save each listing from that page
- *   3. Move to the next results page
- *   (repeat until no more pages)
+ * Stage 1 — Link collection:
+ *   Paginate through ALL search-results pages and collect every listing URL.
+ *   Nothing is saved to the DB during this stage.
  *
- * This means data is saved to the DB continuously — no need to wait
- * for all pages to be collected before anything is stored.
+ * Stage 2 — Listing parsing:
+ *   Visit each collected URL, extract data, and save immediately to the DB.
+ *
+ * A `onProgress` callback is called after every significant state change so
+ * that the web server can expose real-time status to the frontend.
  */
-export async function runScraper(searchUrl: string, category?: string): Promise<void> {
+export async function runScraper(
+  searchUrl: string,
+  category?: string,
+  onProgress?: (p: ScraperProgress) => void,
+): Promise<void> {
   const { browser, page } = await createBrowser();
 
-  let totalSuccess = 0;
-  let totalFail    = 0;
-  let totalUrls    = 0;
-  const seen       = new Set<string>(); // cross-page deduplication
+  const progress: ScraperProgress = {
+    stage:        'collecting',
+    linksFound:   0,
+    pagesScanned: 0,
+    totalLinks:   0,
+    linksParsed:  0,
+    currentUrl:   '',
+  };
+
+  const report = () => { if (onProgress) onProgress({ ...progress }); };
 
   try {
-    let resultsPageNum = 1;
+    // ── Stage 1: Collect ALL listing URLs ────────────────────────────────────
+    console.log('\n[Scraper] ══ STAGE 1: Link collection ══');
+
+    const allUrls: string[] = [];
+    const seen = new Set<string>();
+    let pageNum = 1;
 
     while (true) {
-      // ── Build results-page URL ────────────────────────────────────────────
-      const resultsUrl = resultsPageNum === 1
+      const resultsUrl = pageNum === 1
         ? searchUrl
         : (() => {
             const u = new URL(searchUrl);
-            u.searchParams.set('page', String(resultsPageNum));
+            u.searchParams.set('page', String(pageNum));
             return u.toString();
           })();
 
-      // ── Collect listing URLs from this results page ───────────────────────
-      const { urls, hasMore } = await getUrlsFromResultsPage(page, resultsUrl, resultsPageNum);
+      const { urls, hasMore } = await getUrlsFromResultsPage(page, resultsUrl, pageNum);
 
       if (urls.length === 0) {
-        console.log('[Scraper] No listings on this page — all pages processed.');
+        console.log('[Stage 1] Empty page — collection complete.');
         break;
       }
 
       // Deduplicate across pages
-      const freshUrls = urls.filter((u) => !seen.has(u));
-      freshUrls.forEach((u) => seen.add(u));
-      totalUrls += freshUrls.length;
-
-      console.log(`\n[Stage 2] Parsing ${freshUrls.length} listings from results page ${resultsPageNum} …`);
-
-      // ── Parse & save each listing immediately ─────────────────────────────
-      for (let i = 0; i < freshUrls.length; i++) {
-        const url = freshUrls[i];
-        console.log(`\n[Stage 2] ${i + 1}/${freshUrls.length} (results page ${resultsPageNum}) …`);
-
-        await randomDelay(500, 2_000);
-
-        try {
-          const listing = await parseListing(page, url);
-          listing.category = category ?? null;
-          await saveToDb(listing);
-          totalSuccess++;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`[Stage 2] Failed to process ${url}: ${message}`);
-          totalFail++;
+      for (const url of urls) {
+        if (!seen.has(url)) {
+          seen.add(url);
+          allUrls.push(url);
         }
       }
 
-      console.log(`\n[Scraper] Results page ${resultsPageNum} done.`
-        + ` Running total — saved: ${totalSuccess}, failed: ${totalFail}`);
+      progress.pagesScanned = pageNum;
+      progress.linksFound   = allUrls.length;
+      report();
 
-      // ── Move to next results page ─────────────────────────────────────────
+      console.log(`[Stage 1] Page ${pageNum} done. Total URLs collected: ${allUrls.length}`);
+
       if (!hasMore) {
-        console.log('[Scraper] No more pages — finished.');
+        console.log('[Stage 1] No next page — collection complete.');
         break;
       }
 
-      resultsPageNum++;
+      pageNum++;
       await randomDelay(2_000, 5_000);
     }
 
-    console.log(`\n[Scraper] All done. Total URLs: ${totalUrls}, Saved: ${totalSuccess}, Failed: ${totalFail}`);
+    progress.totalLinks = allUrls.length;
+    console.log(`\n[Scraper] ══ STAGE 1 DONE: ${allUrls.length} unique URLs collected ══`);
+
+    if (allUrls.length === 0) {
+      console.log('[Scraper] No listings found. Exiting.');
+      return;
+    }
+
+    // ── Stage 2: Parse & save each listing ───────────────────────────────────
+    console.log('\n[Scraper] ══ STAGE 2: Parsing listings ══');
+
+    progress.stage       = 'parsing';
+    progress.linksParsed = 0;
+    report();
+
+    let totalSuccess = 0;
+    let totalFail    = 0;
+
+    for (let i = 0; i < allUrls.length; i++) {
+      const url = allUrls[i];
+
+      progress.linksParsed = i;
+      progress.currentUrl  = url;
+      report();
+
+      console.log(`\n[Stage 2] ${i + 1}/${allUrls.length}: ${url}`);
+
+      await randomDelay(500, 2_000);
+
+      try {
+        const listing = await parseListing(page, url);
+        listing.category = category ?? null;
+        await saveToDb(listing);
+        totalSuccess++;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[Stage 2] Failed: ${message}`);
+        totalFail++;
+      }
+
+      console.log(`[Stage 2] Progress: ${i + 1}/${allUrls.length} (saved: ${totalSuccess}, failed: ${totalFail})`);
+    }
+
+    progress.linksParsed = allUrls.length;
+    report();
+
+    console.log(`\n[Scraper] ══ STAGE 2 DONE: saved ${totalSuccess}, failed ${totalFail} ══`);
   } finally {
     await browser.close();
     console.log('[Browser] Closed.');

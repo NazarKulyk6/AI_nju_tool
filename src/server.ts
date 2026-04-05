@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { getPool, initDb } from './db';
-import { runScraper } from './scraper';
+import { runScraper, ScraperProgress } from './scraper';
 import { buildSearchUrl } from './utils';
 
 dotenv.config();
@@ -19,19 +19,35 @@ app.use(express.static(PUBLIC_DIR));
 // ─── Scrape job state ─────────────────────────────────────────────────────────
 interface ScrapeJob {
   status:            'idle' | 'running' | 'done' | 'error';
-  queries:           string[];       // all queued queries
-  currentQuery:      string;         // query being scraped right now
-  currentQueryIndex: number;         // 1-based index of current query
-  totalQueries:      number;         // total queries in this job
+  // Progress
+  stage:             'collecting' | 'parsing' | null;
+  linksFound:        number;   // stage 1: URLs collected so far
+  pagesScanned:      number;   // stage 1: search-result pages visited
+  totalLinks:        number;   // stage 2: total URLs to parse
+  linksParsed:       number;   // stage 2: URLs parsed so far
+  currentUrl:        string;   // URL being processed right now
+  // Multi-query tracking
+  queries:           string[];
+  currentQuery:      string;
+  currentQueryIndex: number;
+  totalQueries:      number;
   category:          string | null;
+  // Timing
   startedAt:         string | null;
   finishedAt:        string | null;
+  // Result
   error:             string | null;
   saved:             number;
 }
 
 let scrapeJob: ScrapeJob = {
   status:            'idle',
+  stage:             null,
+  linksFound:        0,
+  pagesScanned:      0,
+  totalLinks:        0,
+  linksParsed:       0,
+  currentUrl:        '',
   queries:           [],
   currentQuery:      '',
   currentQueryIndex: 0,
@@ -75,7 +91,7 @@ app.get('/api/categories', async (_req: Request, res: Response) => {
   }
 });
 
-// ─── API: Gemini — expand search query into Croatian search terms ──────────────
+// ─── API: Gemini — expand search query into Croatian search terms ─────────────
 app.post('/api/suggest-queries', async (req: Request, res: Response) => {
   const apiKey = process.env.GEMINI_API_KEY ?? '';
   if (!apiKey) {
@@ -108,7 +124,7 @@ Example for input "rtx 2060":
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
@@ -128,9 +144,7 @@ Example for input "rtx 2060":
       candidates?: { content?: { parts?: { text?: string }[] } }[];
     };
 
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-
-    // Extract JSON array from the response (handle possible markdown code fences)
+    const raw   = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     const match = raw.match(/\[[\s\S]*\]/);
     if (!match) {
       console.error('[Gemini] Could not parse JSON from:', raw);
@@ -139,7 +153,6 @@ Example for input "rtx 2060":
     }
 
     const terms: string[] = JSON.parse(match[0]);
-    // Deduplicate and clean
     const unique = [...new Set(terms.map((t: string) => t.trim().toLowerCase()).filter(Boolean))];
 
     console.log(`[Gemini] Expanded "${userInput}" → ${unique.length} terms`);
@@ -173,7 +186,7 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
 
   const category = ((req.body?.category as string) ?? '').trim() || null;
 
-  // Snapshot DB count to measure how many rows are added
+  // Snapshot DB count to measure new rows added
   let countBefore = 0;
   try {
     const r = await getPool().query('SELECT COUNT(*) FROM listings');
@@ -182,6 +195,12 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
 
   scrapeJob = {
     status:            'running',
+    stage:             'collecting',
+    linksFound:        0,
+    pagesScanned:      0,
+    totalLinks:        0,
+    linksParsed:       0,
+    currentUrl:        '',
     queries,
     currentQuery:      queries[0],
     currentQueryIndex: 1,
@@ -202,8 +221,29 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
         const q = queries[i];
         scrapeJob.currentQuery      = q;
         scrapeJob.currentQueryIndex = i + 1;
-        console.log(`[Scrape] Query ${i + 1}/${queries.length}: "${q}"`);
-        await runScraper(buildSearchUrl(q), category ?? undefined);
+        // Reset per-query progress counters for this new query
+        scrapeJob.stage        = 'collecting';
+        scrapeJob.linksFound   = 0;
+        scrapeJob.pagesScanned = 0;
+        scrapeJob.totalLinks   = 0;
+        scrapeJob.linksParsed  = 0;
+        scrapeJob.currentUrl   = '';
+
+        console.log(`\n[Scrape] ══ Query ${i + 1}/${queries.length}: "${q}" ══`);
+
+        await runScraper(
+          buildSearchUrl(q),
+          category ?? undefined,
+          // Progress callback — update shared job state in real-time
+          (p: ScraperProgress) => {
+            scrapeJob.stage        = p.stage;
+            scrapeJob.linksFound   = p.linksFound;
+            scrapeJob.pagesScanned = p.pagesScanned;
+            scrapeJob.totalLinks   = p.totalLinks;
+            scrapeJob.linksParsed  = p.linksParsed;
+            scrapeJob.currentUrl   = p.currentUrl;
+          },
+        );
       }
 
       let saved = 0;
@@ -212,8 +252,13 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
         saved = parseInt(r.rows[0].count, 10) - countBefore;
       } catch { /* ignore */ }
 
-      scrapeJob = { ...scrapeJob, status: 'done', finishedAt: new Date().toISOString(), saved };
-      console.log(`[Scrape] All ${queries.length} queries done. New rows: ${saved}`);
+      scrapeJob = {
+        ...scrapeJob,
+        status:     'done',
+        finishedAt: new Date().toISOString(),
+        saved,
+      };
+      console.log(`\n[Scrape] All ${queries.length} queries done. New rows: ${saved}`);
     } catch (err) {
       scrapeJob = {
         ...scrapeJob,

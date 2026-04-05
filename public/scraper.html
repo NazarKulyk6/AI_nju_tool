@@ -182,15 +182,42 @@
     .selected-count strong { color: var(--accent); }
 
     /* ── Status block ─────────────────────────────────────── */
-    .status-block { border-radius: var(--radius-sm); padding: 14px 18px; display: none; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .status-block { border-radius: var(--radius-sm); padding: 14px 18px; display: none; flex-direction: column; gap: 10px; }
     .status-block.visible { display: flex; }
     .status-block.running { background: rgba(253,205,0,.07); border: 1px solid rgba(253,205,0,.2); color: var(--accent); }
     .status-block.done    { background: rgba(74,222,128,.07);  border: 1px solid rgba(74,222,128,.2);  color: var(--green); }
     .status-block.error   { background: rgba(248,113,113,.07); border: 1px solid rgba(248,113,113,.2); color: var(--red); }
+
+    .status-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .status-msg { flex: 1; font-size: .88rem; line-height: 1.5; }
     .progress-badge { font-size: .78rem; font-weight: 700; background: rgba(0,0,0,.25); padding: 3px 10px; border-radius: 6px; white-space: nowrap; }
     .timer-badge { font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums; background: rgba(0,0,0,.25); padding: 3px 10px; border-radius: 6px; min-width: 52px; text-align: center; }
     .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(253,205,0,.3); border-top-color: var(--accent); animation: spin .7s linear infinite; flex-shrink: 0; }
+
+    /* ── Stage indicators ─────────────────────────────────── */
+    .stages { display: flex; gap: 8px; flex-wrap: wrap; }
+    .stage-pill {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 14px; border-radius: 20px; font-size: .8rem; font-weight: 600;
+      border: 1.5px solid var(--border); background: var(--surface2); color: var(--text-muted);
+      transition: all .25s ease;
+    }
+    .stage-pill.active  { border-color: var(--accent); color: var(--accent); background: rgba(253,205,0,.1); }
+    .stage-pill.done-s  { border-color: rgba(74,222,128,.4); color: var(--green); background: rgba(74,222,128,.08); }
+    .stage-pill .stage-spinner { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid rgba(253,205,0,.3); border-top-color: var(--accent); animation: spin .6s linear infinite; display: none; }
+    .stage-pill.active .stage-spinner { display: block; }
+    .stage-pill .stage-check { display: none; }
+    .stage-pill.done-s .stage-check { display: inline; }
+    .stage-pill.done-s .stage-spinner { display: none; }
+    .stage-pill .stage-num { width: 16px; height: 16px; border-radius: 50%; background: var(--border); color: var(--text-muted); font-size: .65rem; display: flex; align-items: center; justify-content: center; }
+    .stage-pill.active .stage-num { background: var(--accent); color: #000; }
+
+    /* ── Progress bar ─────────────────────────────────────── */
+    .prog-row { display: flex; flex-direction: column; gap: 4px; }
+    .prog-info { display: flex; justify-content: space-between; font-size: .78rem; color: inherit; opacity: .8; }
+    .prog-bar-wrap { background: rgba(0,0,0,.25); border-radius: 4px; height: 5px; overflow: hidden; }
+    .prog-bar { height: 100%; border-radius: 4px; background: var(--accent); transition: width .4s ease; }
+    .prog-url { font-size: .72rem; opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* ── History ──────────────────────────────────────────── */
     .history-empty { color: var(--text-muted); font-size: .88rem; }
@@ -307,10 +334,41 @@
     <!-- Status -->
     <div style="margin-top:14px">
       <div class="status-block" id="status-block">
-        <div class="spinner" id="status-spinner" style="display:none"></div>
-        <div class="status-msg" id="status-msg"></div>
-        <div class="progress-badge" id="progress-badge" style="display:none"></div>
-        <div class="timer-badge" id="timer-badge" style="display:none"></div>
+
+        <!-- Top row: spinner + message + query progress + timer -->
+        <div class="status-top">
+          <div class="spinner" id="status-spinner" style="display:none"></div>
+          <div class="status-msg" id="status-msg"></div>
+          <div class="progress-badge" id="progress-badge" style="display:none"></div>
+          <div class="timer-badge" id="timer-badge" style="display:none"></div>
+        </div>
+
+        <!-- Stage pills -->
+        <div class="stages" id="stages-row" style="display:none">
+          <div class="stage-pill" id="stage-1-pill">
+            <span class="stage-num">1</span>
+            <span class="stage-spinner"></span>
+            <span class="stage-check">✓</span>
+            <span id="stage-1-label">Collecting links</span>
+          </div>
+          <div class="stage-pill" id="stage-2-pill">
+            <span class="stage-num">2</span>
+            <span class="stage-spinner"></span>
+            <span class="stage-check">✓</span>
+            <span id="stage-2-label">Parsing listings</span>
+          </div>
+        </div>
+
+        <!-- Progress bar (stage 2 only) -->
+        <div class="prog-row" id="prog-row" style="display:none">
+          <div class="prog-info">
+            <span id="prog-text"></span>
+            <span id="prog-pct"></span>
+          </div>
+          <div class="prog-bar-wrap"><div class="prog-bar" id="prog-bar" style="width:0%"></div></div>
+          <div class="prog-url" id="prog-url"></div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -333,20 +391,31 @@ let timerInterval = null;
 let jobStartedAt = null;
 
 /* ─── DOM ────────────────────────────────────────────────── */
-const aiInput      = document.getElementById('ai-input');
-const btnGenerate  = document.getElementById('btn-generate');
-const aiError      = document.getElementById('ai-error');
-const queriesWrap  = document.getElementById('queries-wrap');
-const chipsEl      = document.getElementById('chips');
-const catInput     = document.getElementById('cat-input');
-const btnStart     = document.getElementById('btn-start');
-const selectedCount = document.getElementById('selected-count');
-const statusBlock  = document.getElementById('status-block');
-const statusMsg    = document.getElementById('status-msg');
-const statusSpinner = document.getElementById('status-spinner');
-const progressBadge = document.getElementById('progress-badge');
-const timerBadge   = document.getElementById('timer-badge');
-const historyList  = document.getElementById('history-list');
+const aiInput       = document.getElementById('ai-input');
+const btnGenerate   = document.getElementById('btn-generate');
+const aiError       = document.getElementById('ai-error');
+const queriesWrap   = document.getElementById('queries-wrap');
+const chipsEl       = document.getElementById('chips');
+const catInput      = document.getElementById('cat-input');
+const btnStart      = document.getElementById('btn-start');
+const selectedCount  = document.getElementById('selected-count');
+const statusBlock   = document.getElementById('status-block');
+const statusMsg     = document.getElementById('status-msg');
+const statusSpinner  = document.getElementById('status-spinner');
+const progressBadge  = document.getElementById('progress-badge');
+const timerBadge    = document.getElementById('timer-badge');
+const historyList   = document.getElementById('history-list');
+// Stage UI
+const stagesRow     = document.getElementById('stages-row');
+const stage1Pill    = document.getElementById('stage-1-pill');
+const stage2Pill    = document.getElementById('stage-2-pill');
+const stage1Label   = document.getElementById('stage-1-label');
+const stage2Label   = document.getElementById('stage-2-label');
+const progRow       = document.getElementById('prog-row');
+const progText      = document.getElementById('prog-text');
+const progPct       = document.getElementById('prog-pct');
+const progBar       = document.getElementById('prog-bar');
+const progUrl       = document.getElementById('prog-url');
 
 /* ─── Utils ──────────────────────────────────────────────── */
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -500,11 +569,12 @@ async function startScrape() {
   const cat     = catInput.value.trim();
   if (queries.length === 0) return;
 
-  btnStart.disabled = true;
+  btnStart.disabled    = true;
   btnGenerate.disabled = true;
   jobStartedAt = new Date().toISOString();
   startTimer();
   showStatus('running', buildRunningMsg(queries[0], 1, queries.length));
+  updateStageUI({ stage: 'collecting', linksFound: 0, pagesScanned: 0, totalLinks: 0, linksParsed: 0, currentUrl: '', totalQueries: queries.length });
 
   const entry = { queries, category: cat || null, status: 'running', startedAt: jobStartedAt, finishedAt: null, saved: 0, error: null };
   jobHistory.push(entry);
@@ -543,15 +613,58 @@ function stopTimer() {
   timerBadge.style.display = 'none';
 }
 
+/* ─── Stage UI helpers ───────────────────────────────────── */
+function setPill(pill, state) {
+  // state: 'idle' | 'active' | 'done'
+  pill.classList.remove('active', 'done-s');
+  if (state === 'active') pill.classList.add('active');
+  if (state === 'done')   pill.classList.add('done-s');
+}
+
+function updateStageUI(job) {
+  stagesRow.style.display = 'flex';
+
+  if (job.stage === 'collecting') {
+    setPill(stage1Pill, 'active');
+    setPill(stage2Pill, 'idle');
+    stage1Label.textContent = job.linksFound > 0
+      ? `Collecting links — found ${job.linksFound} (page ${job.pagesScanned})`
+      : 'Collecting links…';
+    stage2Label.textContent = 'Parsing listings';
+    progRow.style.display   = 'none';
+
+  } else if (job.stage === 'parsing') {
+    setPill(stage1Pill, 'done');
+    setPill(stage2Pill, 'active');
+    stage1Label.textContent = `Links collected — ${job.totalLinks} URLs`;
+
+    const parsed = job.linksParsed ?? 0;
+    const total  = job.totalLinks  ?? 0;
+    const pct    = total > 0 ? Math.round(parsed / total * 100) : 0;
+    stage2Label.textContent = `Parsing listings — ${parsed}/${total}`;
+
+    progRow.style.display   = 'flex';
+    progText.textContent    = `${parsed} / ${total} listings`;
+    progPct.textContent     = `${pct}%`;
+    progBar.style.width     = `${pct}%`;
+    progUrl.textContent     = job.currentUrl ? `↳ ${job.currentUrl}` : '';
+  }
+}
+
+function hideStageUI() {
+  stagesRow.style.display = 'none';
+  progRow.style.display   = 'none';
+}
+
 /* ─── Status ─────────────────────────────────────────────── */
 function showStatus(type, html) {
   statusBlock.className = `status-block visible ${type}`;
   statusMsg.innerHTML   = html;
-  statusSpinner.style.display  = type === 'running' ? 'block' : 'none';
-  progressBadge.style.display  = type === 'running' ? 'block' : 'none';
+  statusSpinner.style.display = type === 'running' ? 'block' : 'none';
 }
 function buildRunningMsg(currentQ, idx, total) {
-  progressBadge.textContent = `${idx} / ${total}`;
+  progressBadge.style.display = total > 1 ? 'block' : 'none';
+  progressBadge.textContent   = `query ${idx} / ${total}`;
   return `Scraping: <strong>${esc(currentQ)}</strong>`;
 }
 
@@ -565,32 +678,37 @@ function startPolling() {
 
       if (job.status === 'running') {
         showStatus('running', buildRunningMsg(job.currentQuery, job.currentQueryIndex, job.totalQueries));
+        updateStageUI(job);
+        timerBadge.style.display = 'block';
+
       } else if (job.status === 'done' || job.status === 'error') {
         clearInterval(pollTimer); stopTimer();
         btnStart.disabled    = selected.size === 0;
         btnGenerate.disabled = false;
+        progressBadge.style.display = 'none';
+        hideStageUI();
 
         if (job.status === 'done') {
-          showStatus('done', `✅ Done — <strong>${job.saved}</strong> new listings added across <strong>${job.totalQueries}</strong> quer${job.totalQueries === 1 ? 'y' : 'ies'}.`);
-          progressBadge.style.display = 'none';
+          showStatus('done',
+            `✅ Done — <strong>${job.saved}</strong> new listings added across ` +
+            `<strong>${job.totalQueries}</strong> quer${job.totalQueries === 1 ? 'y' : 'ies'}.`);
         } else {
           showStatus('error', `❌ Error: ${esc(job.error ?? 'unknown error')}`);
-          progressBadge.style.display = 'none';
         }
 
         // Update history entry
         if (jobHistory.length) {
           const last = jobHistory[jobHistory.length - 1];
-          last.status = job.status;
-          last.saved  = job.saved;
-          last.error  = job.error;
+          last.status     = job.status;
+          last.saved      = job.saved;
+          last.error      = job.error;
           last.finishedAt = job.finishedAt;
         }
         renderHistory();
         loadStats();
       }
     } catch { /* retry */ }
-  }, 2500);
+  }, 2000);
 }
 
 /* ─── History ────────────────────────────────────────────── */
@@ -627,7 +745,8 @@ function renderHistory() {
       jobStartedAt = job.startedAt;
       startTimer();
       showStatus('running', buildRunningMsg(job.currentQuery, job.currentQueryIndex, job.totalQueries));
-      jobHistory.push({ ...job, queries: job.queries });
+      updateStageUI(job);
+      jobHistory.push({ ...job, queries: job.queries ?? [job.currentQuery] });
       renderHistory();
       startPolling();
     }
