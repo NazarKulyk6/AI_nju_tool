@@ -23,7 +23,8 @@ interface ScrapeJob {
   stage:             'collecting' | 'parsing' | null;
   linksFound:        number;   // stage 1: URLs collected so far
   pagesScanned:      number;   // stage 1: search-result pages visited
-  totalLinks:        number;   // stage 2: total URLs to parse
+  linksSkipped:      number;   // URLs already in DB for this category → skipped
+  totalLinks:        number;   // stage 2: URLs that will actually be parsed
   linksParsed:       number;   // stage 2: URLs parsed so far
   currentUrl:        string;   // URL being processed right now
   // Multi-query tracking
@@ -45,6 +46,7 @@ let scrapeJob: ScrapeJob = {
   stage:             null,
   linksFound:        0,
   pagesScanned:      0,
+  linksSkipped:      0,
   totalLinks:        0,
   linksParsed:       0,
   currentUrl:        '',
@@ -120,47 +122,118 @@ Rules:
 Example for input "rtx 2060":
 ["rtx 2060","nvidia 2060","grafička kartica 2060","geforce 2060","2060 super","rtx2060","2060 6gb","vga 2060","nvidia rtx 2060","2060 gaming"]`;
 
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
+  // Models ordered by preference (highest free-tier RPD first).
+  // Each model is tried in sequence; if one returns 429 we move to the next.
+  // Per AI Studio quota (Apr 2026):
+  //   gemini-3.1-flash-lite-preview → 15 RPM, 500 RPD
+  //   gemma-3-27b-it                → 30 RPM, 14 400 RPD
+  //   gemini-2.5-flash              →  5 RPM,    20 RPD
+  const GEMINI_MODELS = [
+    'gemini-3.1-flash-lite-preview',
+    'gemma-3-27b-it',
+    'gemini-2.5-flash',
+    'gemma-3-12b-it',
+  ];
+  const geminiUrl = (model: string) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  for (let modelIdx = 0; modelIdx < GEMINI_MODELS.length; modelIdx++) {
+    const model = GEMINI_MODELS[modelIdx];
+    let fetchRes: Awaited<ReturnType<typeof fetch>>;
+    try {
+      fetchRes = await fetch(geminiUrl(model), {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
         }),
-      },
-    );
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      console.error('[Gemini] API error:', errBody);
-      res.status(502).json({ error: `Gemini API error: ${response.status}` });
+      });
+    } catch (err) {
+      console.error(`[Gemini/${model}] Network error:`, (err as Error).message);
+      res.status(500).json({ error: (err as Error).message });
       return;
     }
 
-    const data = await response.json() as {
+    // 429 with limit:0 means this model has no quota → try the next one
+    if (fetchRes.status === 429) {
+      const errBody = await fetchRes.text();
+      const isZeroQuota = errBody.includes('limit: 0');
+
+      if (isZeroQuota && modelIdx + 1 < GEMINI_MODELS.length) {
+        console.warn(`[Gemini/${model}] Zero quota — switching to next model…`);
+        continue;
+      }
+
+      // Transient rate-limit: wait and retry the same model once
+      const retryAfterHeader = fetchRes.headers.get('Retry-After');
+      const waitMs = retryAfterHeader ? parseInt(retryAfterHeader, 10) * 1000 : 15_000;
+      console.warn(`[Gemini/${model}] 429 transient — waiting ${waitMs / 1000}s…`);
+      await sleep(waitMs);
+
+      // One more attempt with the same model
+      try {
+        fetchRes = await fetch(geminiUrl(model), {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
+          }),
+        });
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+        return;
+      }
+
+      if (fetchRes.status === 429) {
+        if (modelIdx + 1 < GEMINI_MODELS.length) {
+          console.warn(`[Gemini/${model}] Still 429 — switching to next model…`);
+          continue;
+        }
+        res.status(429).json({ error: 'All Gemini models are rate-limited. Try again in a minute.' });
+        return;
+      }
+    }
+
+    if (!fetchRes.ok) {
+      const errBody = await fetchRes.text();
+      console.error(`[Gemini/${model}] Error ${fetchRes.status}:`, errBody.slice(0, 200));
+      // Try next model on server errors too
+      if (modelIdx + 1 < GEMINI_MODELS.length) continue;
+      res.status(502).json({ error: `Gemini API error ${fetchRes.status}: ${errBody.slice(0, 200)}` });
+      return;
+    }
+
+    // ── Success ──────────────────────────────────────────────
+    const data = await fetchRes.json() as {
       candidates?: { content?: { parts?: { text?: string }[] } }[];
     };
 
     const raw   = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     const match = raw.match(/\[[\s\S]*\]/);
     if (!match) {
-      console.error('[Gemini] Could not parse JSON from:', raw);
-      res.status(502).json({ error: 'Gemini returned unexpected format.', raw });
+      console.error(`[Gemini/${model}] Could not parse JSON:`, raw.slice(0, 200));
+      if (modelIdx + 1 < GEMINI_MODELS.length) continue;   // try next model
+      res.status(502).json({ error: 'Gemini returned an unexpected format. Try again.' });
       return;
     }
 
-    const terms: string[] = JSON.parse(match[0]);
-    const unique = [...new Set(terms.map((t: string) => t.trim().toLowerCase()).filter(Boolean))];
-
-    console.log(`[Gemini] Expanded "${userInput}" → ${unique.length} terms`);
-    res.json({ terms: unique });
-  } catch (err) {
-    console.error('[Gemini] Request failed:', (err as Error).message);
-    res.status(500).json({ error: (err as Error).message });
+    try {
+      const terms: string[] = JSON.parse(match[0]);
+      const unique = [...new Set(terms.map((t: string) => t.trim().toLowerCase()).filter(Boolean))];
+      console.log(`[Gemini/${model}] Expanded "${userInput}" → ${unique.length} terms`);
+      res.json({ terms: unique });
+    } catch {
+      res.status(502).json({ error: 'Failed to parse Gemini response as JSON.' });
+    }
+    return;   // success — exit loop
   }
+
+  // All models exhausted without success
+  res.status(502).json({ error: 'All Gemini models failed. Check your API key and quota.' });
 });
 
 // ─── API: Trigger scrape (supports multiple queries) ──────────────────────────
@@ -193,11 +266,15 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
     countBefore = parseInt(r.rows[0].count, 10);
   } catch { /* ignore */ }
 
+  // Unique ID for this job's pending_urls bucket
+  const jobId = `job_${Date.now()}`;
+
   scrapeJob = {
     status:            'running',
     stage:             'collecting',
     linksFound:        0,
     pagesScanned:      0,
+    linksSkipped:      0,
     totalLinks:        0,
     linksParsed:       0,
     currentUrl:        '',
@@ -225,11 +302,15 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
         scrapeJob.stage        = 'collecting';
         scrapeJob.linksFound   = 0;
         scrapeJob.pagesScanned = 0;
+        scrapeJob.linksSkipped = 0;
         scrapeJob.totalLinks   = 0;
         scrapeJob.linksParsed  = 0;
         scrapeJob.currentUrl   = '';
 
         console.log(`\n[Scrape] ══ Query ${i + 1}/${queries.length}: "${q}" ══`);
+
+        // Each query in the job gets its own sub-bucket: jobId_queryIndex
+        const subJobId = `${jobId}_${i}`;
 
         await runScraper(
           buildSearchUrl(q),
@@ -239,10 +320,12 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
             scrapeJob.stage        = p.stage;
             scrapeJob.linksFound   = p.linksFound;
             scrapeJob.pagesScanned = p.pagesScanned;
+            scrapeJob.linksSkipped = p.linksSkipped;
             scrapeJob.totalLinks   = p.totalLinks;
             scrapeJob.linksParsed  = p.linksParsed;
             scrapeJob.currentUrl   = p.currentUrl;
           },
+          subJobId,
         );
       }
 

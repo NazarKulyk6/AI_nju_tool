@@ -299,23 +299,24 @@
     </div>
     <div id="ai-error" style="font-size:.82rem;color:var(--red);margin-top:8px;display:none"></div>
 
-    <!-- Step 2: query chips (appears after generation) -->
-    <div class="queries-wrap" id="queries-wrap" style="display:none">
+    <!-- Query list: always visible, AI fills it, user can add manually -->
+    <div class="queries-wrap" id="queries-wrap" style="margin-top:16px">
       <div class="queries-label">
-        <span>Select queries to scrape</span>
+        <span>Queries to scrape</span>
         <div class="queries-label-actions">
-          <button class="lbl-action-btn" id="btn-select-all">Select all</button>
-          <button class="lbl-action-btn" id="btn-deselect-all">Deselect all</button>
+          <button class="lbl-action-btn" id="btn-select-all" style="display:none">Select all</button>
+          <button class="lbl-action-btn" id="btn-deselect-all" style="display:none">Deselect all</button>
         </div>
       </div>
       <div class="chips" id="chips"></div>
-      <div class="add-custom-row" id="add-custom-row">
-        <input class="add-custom-input" id="custom-input" type="text" placeholder="Add custom query…" autocomplete="off" />
+
+      <!-- Always-visible manual add row -->
+      <div class="add-custom-row open" id="add-custom-row" style="margin-top:8px">
+        <input class="add-custom-input" id="custom-input" type="text" placeholder="Type a search query and press Add…" autocomplete="off" />
         <button class="btn-add-confirm" id="btn-add-confirm">Add</button>
       </div>
-      <button class="chip-add" id="btn-chip-add" style="margin-top:8px">+ Add custom</button>
 
-      <!-- Step 3: category + start -->
+      <!-- Category + Start -->
       <div class="start-row">
         <div class="cat-field">
           <label for="cat-input">Category <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
@@ -485,14 +486,24 @@ function renderChips() {
       updateSelectedCount();
     });
   });
+
+  // Show select/deselect buttons only when chips exist
+  const haschips = allTerms.length > 0;
+  document.getElementById('btn-select-all').style.display   = haschips ? '' : 'none';
+  document.getElementById('btn-deselect-all').style.display = haschips ? '' : 'none';
+
   updateSelectedCount();
 }
 
 function updateSelectedCount() {
   const n = selected.size;
-  selectedCount.innerHTML = n === 0
-    ? '<span style="color:var(--red)">No queries selected</span>'
-    : `<strong>${n}</strong> quer${n === 1 ? 'y' : 'ies'} selected`;
+  if (allTerms.length === 0) {
+    selectedCount.innerHTML = '<span style="color:var(--text-muted)">Add queries above or use AI ✨</span>';
+  } else {
+    selectedCount.innerHTML = n === 0
+      ? '<span style="color:var(--red)">No queries selected</span>'
+      : `<strong>${n}</strong> quer${n === 1 ? 'y' : 'ies'} selected`;
+  }
   btnStart.disabled = n === 0;
 }
 
@@ -515,11 +526,20 @@ async function generateQueries() {
       body: JSON.stringify({ query: q }),
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    if (!res.ok) {
+      const msg = res.status === 429
+        ? '⏱ Gemini rate limit — the server already retried several times. Please wait ~1 minute and try again.'
+        : (json.error || `HTTP ${res.status}`);
+      throw new Error(msg);
+    }
 
-    allTerms = json.terms;
-    selected = new Set(allTerms.map((_, i) => i)); // select all by default
-    queriesWrap.style.display = '';
+    // Merge: keep existing terms, append only new ones from AI (deduplicate)
+    const existingSet = new Set(allTerms.map(t => t.toLowerCase().trim()));
+    const newTerms = json.terms.filter(t => !existingSet.has(t.toLowerCase().trim()));
+    const firstNewIdx = allTerms.length;
+    allTerms = [...allTerms, ...newTerms];
+    // Keep existing selections; select all new AI terms by default
+    for (let i = firstNewIdx; i < allTerms.length; i++) selected.add(i);
     renderChips();
   } catch (err) {
     aiError.textContent = `AI error: ${err.message}`;
@@ -541,11 +561,6 @@ document.getElementById('btn-deselect-all').addEventListener('click', () => {
 });
 
 /* ─── Add custom query ───────────────────────────────────── */
-document.getElementById('btn-chip-add').addEventListener('click', () => {
-  const row = document.getElementById('add-custom-row');
-  row.classList.add('open');
-  document.getElementById('custom-input').focus();
-});
 document.getElementById('btn-add-confirm').addEventListener('click', addCustomTerm);
 document.getElementById('custom-input').addEventListener('keydown', e => { if (e.key === 'Enter') addCustomTerm(); });
 
@@ -558,7 +573,7 @@ function addCustomTerm() {
     renderChips();
   }
   document.getElementById('custom-input').value = '';
-  document.getElementById('add-custom-row').classList.remove('open');
+  document.getElementById('custom-input').focus();
 }
 
 /* ─── Start scraping ─────────────────────────────────────── */
@@ -636,7 +651,8 @@ function updateStageUI(job) {
   } else if (job.stage === 'parsing') {
     setPill(stage1Pill, 'done');
     setPill(stage2Pill, 'active');
-    stage1Label.textContent = `Links collected — ${job.totalLinks} URLs`;
+    const skipNote = job.linksSkipped > 0 ? `, ${job.linksSkipped} skipped` : '';
+    stage1Label.textContent = `Links collected — ${job.totalLinks + (job.linksSkipped ?? 0)} found${skipNote}`;
 
     const parsed = job.linksParsed ?? 0;
     const total  = job.totalLinks  ?? 0;

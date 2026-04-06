@@ -1,5 +1,14 @@
 import { Browser, BrowserContext, Page, chromium } from 'playwright';
-import { Listing, saveToDb } from './db';
+import {
+  Listing,
+  saveToDb,
+  enqueuePendingUrl,
+  fetchPendingUrls,
+  countPendingUrls,
+  countSkippedUrls,
+  markUrlProcessed,
+  cleanupPendingUrls,
+} from './db';
 import {
   randomDelay,
   humanScroll,
@@ -19,10 +28,11 @@ interface ScraperContext {
 export interface ScraperProgress {
   stage:        'collecting' | 'parsing';
   // Stage 1
-  linksFound:   number;   // URLs collected so far (grows while paginating)
+  linksFound:   number;   // unique URLs collected so far
   pagesScanned: number;   // search-result pages visited
+  linksSkipped: number;   // URLs already in DB for this category (will be skipped)
   // Stage 2
-  totalLinks:   number;   // total URLs to parse (set when stage 1 finishes)
+  totalLinks:   number;   // URLs that will actually be parsed
   linksParsed:  number;   // URLs already parsed
   currentUrl:   string;   // URL being processed right now
 }
@@ -337,13 +347,18 @@ export async function runScraper(
   searchUrl: string,
   category?: string,
   onProgress?: (p: ScraperProgress) => void,
+  jobId?: string,
 ): Promise<void> {
+  // Each call gets a unique job bucket in pending_urls
+  const jid = jobId ?? `job_${Date.now()}`;
+
   const { browser, page } = await createBrowser();
 
   const progress: ScraperProgress = {
     stage:        'collecting',
     linksFound:   0,
     pagesScanned: 0,
+    linksSkipped: 0,
     totalLinks:   0,
     linksParsed:  0,
     currentUrl:   '',
@@ -352,11 +367,9 @@ export async function runScraper(
   const report = () => { if (onProgress) onProgress({ ...progress }); };
 
   try {
-    // ── Stage 1: Collect ALL listing URLs ────────────────────────────────────
-    console.log('\n[Scraper] ══ STAGE 1: Link collection ══');
+    // ── Stage 1: Paginate search results, write every URL to DB ──────────────
+    console.log(`\n[Scraper] ══ STAGE 1: Link collection (job=${jid}) ══`);
 
-    const allUrls: string[] = [];
-    const seen = new Set<string>();
     let pageNum = 1;
 
     while (true) {
@@ -375,19 +388,17 @@ export async function runScraper(
         break;
       }
 
-      // Deduplicate across pages
+      // Persist each URL to DB (dedup by job_id + url handled by unique index)
       for (const url of urls) {
-        if (!seen.has(url)) {
-          seen.add(url);
-          allUrls.push(url);
-        }
+        await enqueuePendingUrl(jid, url);
       }
 
+      const totalFound = await countPendingUrls(jid);
       progress.pagesScanned = pageNum;
-      progress.linksFound   = allUrls.length;
+      progress.linksFound   = totalFound;
       report();
 
-      console.log(`[Stage 1] Page ${pageNum} done. Total URLs collected: ${allUrls.length}`);
+      console.log(`[Stage 1] Page ${pageNum} done. Total URLs queued in DB: ${totalFound}`);
 
       if (!hasMore) {
         console.log('[Stage 1] No next page — collection complete.');
@@ -398,11 +409,30 @@ export async function runScraper(
       await randomDelay(2_000, 5_000);
     }
 
-    progress.totalLinks = allUrls.length;
-    console.log(`\n[Scraper] ══ STAGE 1 DONE: ${allUrls.length} unique URLs collected ══`);
+    const totalQueued = await countPendingUrls(jid);
+    console.log(`\n[Scraper] ══ STAGE 1 DONE: ${totalQueued} unique URLs queued in DB ══`);
 
-    if (allUrls.length === 0) {
+    if (totalQueued === 0) {
       console.log('[Scraper] No listings found. Exiting.');
+      progress.totalLinks = 0;
+      report();
+      return;
+    }
+
+    // ── Pre-filter: fetch only URLs not yet saved for this category ───────────
+    // Filtering is done inside the DB query — nothing large is loaded into memory
+    console.log('[Scraper] Fetching new (unscraped) URLs from DB for this category…');
+    const urlsToProcess = await fetchPendingUrls(jid, category ?? null);
+    const skipped       = await countSkippedUrls(jid, category ?? null);
+
+    progress.linksSkipped = skipped;
+    progress.totalLinks   = urlsToProcess.length;
+    report();
+
+    console.log(`[Scraper] ${skipped} URLs skipped (already in DB for category "${category ?? ''}"). Will parse ${urlsToProcess.length}.`);
+
+    if (urlsToProcess.length === 0) {
+      console.log('[Scraper] Nothing new to parse. Exiting.');
       return;
     }
 
@@ -416,14 +446,14 @@ export async function runScraper(
     let totalSuccess = 0;
     let totalFail    = 0;
 
-    for (let i = 0; i < allUrls.length; i++) {
-      const url = allUrls[i];
+    for (let i = 0; i < urlsToProcess.length; i++) {
+      const url = urlsToProcess[i];
 
       progress.linksParsed = i;
       progress.currentUrl  = url;
       report();
 
-      console.log(`\n[Stage 2] ${i + 1}/${allUrls.length}: ${url}`);
+      console.log(`\n[Stage 2] ${i + 1}/${urlsToProcess.length}: ${url}`);
 
       await randomDelay(500, 2_000);
 
@@ -431,6 +461,7 @@ export async function runScraper(
         const listing = await parseListing(page, url);
         listing.category = category ?? null;
         await saveToDb(listing);
+        await markUrlProcessed(jid, url);
         totalSuccess++;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -438,15 +469,17 @@ export async function runScraper(
         totalFail++;
       }
 
-      console.log(`[Stage 2] Progress: ${i + 1}/${allUrls.length} (saved: ${totalSuccess}, failed: ${totalFail})`);
+      console.log(`[Stage 2] Progress: ${i + 1}/${urlsToProcess.length} (saved: ${totalSuccess}, failed: ${totalFail})`);
     }
 
-    progress.linksParsed = allUrls.length;
+    progress.linksParsed = urlsToProcess.length;
     report();
 
     console.log(`\n[Scraper] ══ STAGE 2 DONE: saved ${totalSuccess}, failed ${totalFail} ══`);
   } finally {
     await browser.close();
     console.log('[Browser] Closed.');
+    // Clean up the DB queue for this job
+    await cleanupPendingUrls(jid);
   }
 }

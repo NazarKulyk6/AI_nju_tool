@@ -113,6 +113,10 @@ docker compose down
 docker compose down -v
 ```
 
+## How It Works
+
+For a detailed step-by-step explanation of the scraping process, query generation, stages, and storage rules see **[HOW_IT_WORKS.md](./HOW_IT_WORKS.md)**.
+
 ## Ports
 
 | Service | Host port | Container port |
