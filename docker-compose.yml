@@ -60,6 +60,20 @@ services:
       DB_PASSWORD: postgres
       PORT:        "3000"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      # ── Anti-detection (override in .env or here to tune) ──────────────────
+      SCRAPER_HEADLESS:              "${SCRAPER_HEADLESS:-false}"
+      BROWSER_LOCALE:                "${BROWSER_LOCALE:-hr-HR}"
+      BROWSER_TIMEZONE:              "${BROWSER_TIMEZONE:-Europe/Zagreb}"
+      DELAY_AFTER_RESULTS_PAGE_MIN:  "${DELAY_AFTER_RESULTS_PAGE_MIN:-1500}"
+      DELAY_AFTER_RESULTS_PAGE_MAX:  "${DELAY_AFTER_RESULTS_PAGE_MAX:-3000}"
+      DELAY_BETWEEN_PAGES_MIN:       "${DELAY_BETWEEN_PAGES_MIN:-2000}"
+      DELAY_BETWEEN_PAGES_MAX:       "${DELAY_BETWEEN_PAGES_MAX:-5000}"
+      DELAY_BETWEEN_LISTINGS_MIN:    "${DELAY_BETWEEN_LISTINGS_MIN:-500}"
+      DELAY_BETWEEN_LISTINGS_MAX:    "${DELAY_BETWEEN_LISTINGS_MAX:-2000}"
+      DELAY_AFTER_LISTING_MIN:       "${DELAY_AFTER_LISTING_MIN:-1000}"
+      DELAY_AFTER_LISTING_MAX:       "${DELAY_AFTER_LISTING_MAX:-2500}"
+      RETRY_MAX_ATTEMPTS:            "${RETRY_MAX_ATTEMPTS:-3}"
+      RETRY_BASE_DELAY_MS:           "${RETRY_BASE_DELAY_MS:-3000}"
     ports:
       - "3001:3000"         # http://localhost:3001
 
@@ -83,6 +97,20 @@ services:
       DB_NAME:     scraper
       DB_USER:     postgres
       DB_PASSWORD: postgres
+      # ── Anti-detection (override in .env or here to tune) ──────────────────
+      SCRAPER_HEADLESS:              "${SCRAPER_HEADLESS:-false}"
+      BROWSER_LOCALE:                "${BROWSER_LOCALE:-hr-HR}"
+      BROWSER_TIMEZONE:              "${BROWSER_TIMEZONE:-Europe/Zagreb}"
+      DELAY_AFTER_RESULTS_PAGE_MIN:  "${DELAY_AFTER_RESULTS_PAGE_MIN:-1500}"
+      DELAY_AFTER_RESULTS_PAGE_MAX:  "${DELAY_AFTER_RESULTS_PAGE_MAX:-3000}"
+      DELAY_BETWEEN_PAGES_MIN:       "${DELAY_BETWEEN_PAGES_MIN:-2000}"
+      DELAY_BETWEEN_PAGES_MAX:       "${DELAY_BETWEEN_PAGES_MAX:-5000}"
+      DELAY_BETWEEN_LISTINGS_MIN:    "${DELAY_BETWEEN_LISTINGS_MIN:-500}"
+      DELAY_BETWEEN_LISTINGS_MAX:    "${DELAY_BETWEEN_LISTINGS_MAX:-2000}"
+      DELAY_AFTER_LISTING_MIN:       "${DELAY_AFTER_LISTING_MIN:-1000}"
+      DELAY_AFTER_LISTING_MAX:       "${DELAY_AFTER_LISTING_MAX:-2500}"
+      RETRY_MAX_ATTEMPTS:            "${RETRY_MAX_ATTEMPTS:-3}"
+      RETRY_BASE_DELAY_MS:           "${RETRY_BASE_DELAY_MS:-3000}"
     profiles:
       - scraper              # does not start on `docker-compose up`
 

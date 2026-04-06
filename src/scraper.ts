@@ -16,6 +16,7 @@ import {
   withRetry,
   dedupe,
 } from './utils';
+import { config } from './config';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ export async function createBrowser(): Promise<ScraperContext> {
   const userAgent = randomUserAgent();
 
   const browser = await chromium.launch({
-    headless: false,
+    headless: config.headless,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -58,11 +59,11 @@ export async function createBrowser(): Promise<ScraperContext> {
 
   const context = await browser.newContext({
     userAgent,
-    locale: 'hr-HR',
-    timezoneId: 'Europe/Zagreb',
+    locale:     config.locale,
+    timezoneId: config.timezone,
     viewport: { width: 1366, height: 768 },
     extraHTTPHeaders: {
-      'Accept-Language': 'hr-HR,hr;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Accept-Language': `${config.locale},${config.locale.split('-')[0]};q=0.9,en-US;q=0.8,en;q=0.7`,
     },
   });
 
@@ -109,11 +110,11 @@ async function getUrlsFromResultsPage(
 
   await withRetry(async () => {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-  });
+  }, config.retry.maxAttempts, config.retry.baseDelayMs);
 
   await dismissCookieBanner(page);
   await humanScroll(page);
-  await randomDelay(1_500, 3_000);
+  await randomDelay(config.delay.afterResultsPage.min, config.delay.afterResultsPage.max);
 
   const urls = await page.evaluate((): string[] => {
     const anchors = Array.from(
@@ -161,11 +162,11 @@ export async function parseListing(page: Page, url: string): Promise<Listing> {
       waitUntil: 'domcontentloaded',
       timeout: 30_000,
     });
-  });
+  }, config.retry.maxAttempts, config.retry.baseDelayMs);
 
   await dismissCookieBanner(page);
   await humanScroll(page);
-  await randomDelay(1_000, 2_500);
+  await randomDelay(config.delay.afterListing.min, config.delay.afterListing.max);
 
   const title       = await getTitle(page);
   const price       = await getPrice(page);
@@ -406,7 +407,7 @@ export async function runScraper(
       }
 
       pageNum++;
-      await randomDelay(2_000, 5_000);
+      await randomDelay(config.delay.betweenPages.min, config.delay.betweenPages.max);
     }
 
     const totalQueued = await countPendingUrls(jid);
@@ -455,7 +456,7 @@ export async function runScraper(
 
       console.log(`\n[Stage 2] ${i + 1}/${urlsToProcess.length}: ${url}`);
 
-      await randomDelay(500, 2_000);
+      await randomDelay(config.delay.betweenListings.min, config.delay.betweenListings.max);
 
       try {
         const listing = await parseListing(page, url);
