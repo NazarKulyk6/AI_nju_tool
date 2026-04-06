@@ -113,6 +113,17 @@ docker compose down
 docker compose down -v
 ```
 
+### Updating to the latest version
+
+Already running the app and want to pull new changes?
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+`--build` forces Docker to rebuild the image with the new code. The database volume is preserved — your scraped data stays intact.
+
 ## How It Works
 
 For a detailed step-by-step explanation of the scraping process, query generation, stages, and storage rules see **[HOW_IT_WORKS.md](./HOW_IT_WORKS.md)**.
