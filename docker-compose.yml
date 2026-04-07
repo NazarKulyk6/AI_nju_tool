@@ -1,8 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  docker compose up -d                       → start DB + web server + g4f (AI)
 #  docker compose run --rm scraper            → run scraper interactively (CLI)
-#  Website: http://localhost:3001
-#  G4F API: http://localhost:1337/v1  (when --profile ai is active)
+#  Website: http://localhost:${WEB_HOST_PORT:-3001}
+#  G4F API: http://localhost:${G4F_HOST_PORT:-1337}/v1
 # ─────────────────────────────────────────────────────────────────────────────
 #
 #  Network njuskalo_net (bridge):
@@ -12,10 +12,10 @@
 #  │  scraper  → db:5432          (Playwright, run manually)              │
 #  │  g4f      → (internet)       (gpt4free provider requests)            │
 #  └──────────────────────────────────────────────────────────────────────┘
-#  Host: localhost:5438 → db:5432   (external DB client)
-#  Host: localhost:3001 → web:3000  (browser)
-#  Host: localhost:1337 → g4f:8080  (external G4F API access)
-#  Host: localhost:6379 → redis:6379 (external Redis access)
+#  Host: localhost:${DB_HOST_PORT:-5438}   → db:5432    (external DB client)
+#  Host: localhost:${WEB_HOST_PORT:-3001}  → web:3000   (browser)
+#  Host: localhost:${G4F_HOST_PORT:-1337}  → g4f:8080   (external G4F API)
+#  Host: localhost:${REDIS_HOST_PORT:-6379}→ redis:6379 (external Redis)
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -28,7 +28,7 @@ services:
     networks:
       - njuskalo_net
     ports:
-      - "6379:6379"       # host access (redis-cli, RedisInsight, etc.)
+      - "${REDIS_HOST_PORT:-6379}:6379"   # host access (redis-cli, RedisInsight, etc.)
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes   # persist queue to disk
@@ -47,15 +47,15 @@ services:
     networks:
       - njuskalo_net
     environment:
-      POSTGRES_DB:       scraper
-      POSTGRES_USER:     postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB:       "${DB_NAME:-scraper}"
+      POSTGRES_USER:     "${DB_USER:-postgres}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-postgres}"
     ports:
-      - "5438:5432"   # host-only (DBeaver, psql, etc.)
+      - "${DB_HOST_PORT:-5438}:5432"   # host-only (DBeaver, psql, etc.)
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d scraper"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-scraper}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -63,7 +63,7 @@ services:
 
   # ── G4F (gpt4free Interference API) ─────────────────────────────────────────
   # Provides a FREE OpenAI-compatible REST API at http://g4f:8080/v1 (internal)
-  # and http://localhost:1337/v1 (external).
+  # and http://localhost:${G4F_HOST_PORT:-1337}/v1 (external).
   # Starts automatically with docker compose up -d (required when AI_BACKEND=g4f).
   g4f:
     build:
@@ -74,15 +74,13 @@ services:
     networks:
       - njuskalo_net
     ports:
-      - "1337:8080"         # OpenAI-compatible API: http://localhost:1337/v1
+      - "${G4F_HOST_PORT:-1337}:8080"   # OpenAI-compatible API
     environment:
-      # Comma-separated "Provider:model" pairs, tried left-to-right
       G4F_PROVIDERS:         "${G4F_PROVIDERS:-PollinationsAI:openai-fast:1,Yqcloud:gpt-4:3}"
-      # Circuit-breaker settings
-      G4F_FAILURE_THRESHOLD: "${G4F_FAILURE_THRESHOLD:-3}"   # failures before tripping
-      G4F_RESET_AFTER_SEC:   "${G4F_RESET_AFTER_SEC:-300}"   # seconds until auto-reset
-      G4F_MAX_RETRIES:       "${G4F_MAX_RETRIES:-2}"          # retries per provider per request
-      G4F_CALL_TIMEOUT:      "${G4F_CALL_TIMEOUT:-60}"        # per-call timeout (seconds)
+      G4F_FAILURE_THRESHOLD: "${G4F_FAILURE_THRESHOLD:-3}"
+      G4F_RESET_AFTER_SEC:   "${G4F_RESET_AFTER_SEC:-300}"
+      G4F_MAX_RETRIES:       "${G4F_MAX_RETRIES:-2}"
+      G4F_CALL_TIMEOUT:      "${G4F_CALL_TIMEOUT:-60}"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
@@ -106,19 +104,20 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DB_HOST:     db       # service hostname inside njuskalo_net
-      DB_PORT:     "5432"   # internal container port
-      DB_NAME:     scraper
-      DB_USER:     postgres
-      DB_PASSWORD: postgres
+      # ── Database ────────────────────────────────────────────────────────────
+      DB_HOST:     db       # fixed: Docker service hostname (always "db")
+      DB_PORT:     "5432"   # fixed: internal container port (always 5432)
+      DB_NAME:     "${DB_NAME:-scraper}"
+      DB_USER:     "${DB_USER:-postgres}"
+      DB_PASSWORD: "${DB_PASSWORD:-postgres}"
+      # ── Web server ──────────────────────────────────────────────────────────
       PORT:        "3000"
       # ── Redis (BullMQ queue) ────────────────────────────────────────────────
-      REDIS_HOST:  redis
-      REDIS_PORT:  "6379"
+      REDIS_HOST:  "${REDIS_HOST:-redis}"
+      REDIS_PORT:  "${REDIS_PORT:-6379}"
       # ── AI Backend ─────────────────────────────────────────────────────────
       AI_BACKEND:              "${AI_BACKEND:-g4f}"
       AI_CONCURRENCY:          "${AI_CONCURRENCY:-3}"
-      # G4F: 300ms between calls is enough.  Gemini: keep ≥2000 (30 RPM limit).
       AI_CALL_DELAY_MS:        "${AI_CALL_DELAY_MS:-300}"
       # G4F settings (used when AI_BACKEND=g4f)
       G4F_BASE_URL:            "${G4F_BASE_URL:-http://g4f:8080/v1}"
@@ -129,22 +128,22 @@ services:
       GEMINI_ANALYZER_MODELS:  "${GEMINI_ANALYZER_MODELS:-gemma-3-27b-it,gemma-3-12b-it,gemini-3.1-flash-lite-preview,gemini-2.5-flash}"
       GEMINI_SUGGEST_MODELS:   "${GEMINI_SUGGEST_MODELS:-gemini-3.1-flash-lite-preview,gemma-3-27b-it,gemini-2.5-flash,gemma-3-12b-it}"
       GEMINI_RETRY_ATTEMPTS:   "${GEMINI_RETRY_ATTEMPTS:-4}"
-      # ── Anti-detection (override in .env or here to tune) ──────────────────
-      SCRAPER_HEADLESS:              "${SCRAPER_HEADLESS:-false}"
-      BROWSER_LOCALE:                "${BROWSER_LOCALE:-hr-HR}"
-      BROWSER_TIMEZONE:              "${BROWSER_TIMEZONE:-Europe/Zagreb}"
-      DELAY_AFTER_RESULTS_PAGE_MIN:  "${DELAY_AFTER_RESULTS_PAGE_MIN:-1500}"
-      DELAY_AFTER_RESULTS_PAGE_MAX:  "${DELAY_AFTER_RESULTS_PAGE_MAX:-3000}"
-      DELAY_BETWEEN_PAGES_MIN:       "${DELAY_BETWEEN_PAGES_MIN:-2000}"
-      DELAY_BETWEEN_PAGES_MAX:       "${DELAY_BETWEEN_PAGES_MAX:-5000}"
-      DELAY_BETWEEN_LISTINGS_MIN:    "${DELAY_BETWEEN_LISTINGS_MIN:-500}"
-      DELAY_BETWEEN_LISTINGS_MAX:    "${DELAY_BETWEEN_LISTINGS_MAX:-2000}"
-      DELAY_AFTER_LISTING_MIN:       "${DELAY_AFTER_LISTING_MIN:-1000}"
-      DELAY_AFTER_LISTING_MAX:       "${DELAY_AFTER_LISTING_MAX:-2500}"
-      RETRY_MAX_ATTEMPTS:            "${RETRY_MAX_ATTEMPTS:-3}"
-      RETRY_BASE_DELAY_MS:           "${RETRY_BASE_DELAY_MS:-3000}"
+      # ── Anti-detection ─────────────────────────────────────────────────────
+      SCRAPER_HEADLESS:             "${SCRAPER_HEADLESS:-false}"
+      BROWSER_LOCALE:               "${BROWSER_LOCALE:-hr-HR}"
+      BROWSER_TIMEZONE:             "${BROWSER_TIMEZONE:-Europe/Zagreb}"
+      DELAY_AFTER_RESULTS_PAGE_MIN: "${DELAY_AFTER_RESULTS_PAGE_MIN:-1500}"
+      DELAY_AFTER_RESULTS_PAGE_MAX: "${DELAY_AFTER_RESULTS_PAGE_MAX:-3000}"
+      DELAY_BETWEEN_PAGES_MIN:      "${DELAY_BETWEEN_PAGES_MIN:-2000}"
+      DELAY_BETWEEN_PAGES_MAX:      "${DELAY_BETWEEN_PAGES_MAX:-5000}"
+      DELAY_BETWEEN_LISTINGS_MIN:   "${DELAY_BETWEEN_LISTINGS_MIN:-500}"
+      DELAY_BETWEEN_LISTINGS_MAX:   "${DELAY_BETWEEN_LISTINGS_MAX:-2000}"
+      DELAY_AFTER_LISTING_MIN:      "${DELAY_AFTER_LISTING_MIN:-1000}"
+      DELAY_AFTER_LISTING_MAX:      "${DELAY_AFTER_LISTING_MAX:-2500}"
+      RETRY_MAX_ATTEMPTS:           "${RETRY_MAX_ATTEMPTS:-3}"
+      RETRY_BASE_DELAY_MS:          "${RETRY_BASE_DELAY_MS:-3000}"
     ports:
-      - "3001:3000"         # http://localhost:3001
+      - "${WEB_HOST_PORT:-3001}:3000"
 
   # ── Scraper ─────────────────────────────────────────────────────────────────
   scraper:
@@ -161,11 +160,12 @@ services:
       db:
         condition: service_healthy
     environment:
+      # ── Database ────────────────────────────────────────────────────────────
       DB_HOST:     db
       DB_PORT:     "5432"
-      DB_NAME:     scraper
-      DB_USER:     postgres
-      DB_PASSWORD: postgres
+      DB_NAME:     "${DB_NAME:-scraper}"
+      DB_USER:     "${DB_USER:-postgres}"
+      DB_PASSWORD: "${DB_PASSWORD:-postgres}"
       # ── AI Backend ─────────────────────────────────────────────────────────
       AI_BACKEND:              "${AI_BACKEND:-g4f}"
       AI_CONCURRENCY:          "${AI_CONCURRENCY:-3}"
@@ -177,20 +177,20 @@ services:
       GEMINI_ANALYZER_MODELS:  "${GEMINI_ANALYZER_MODELS:-gemma-3-27b-it,gemma-3-12b-it,gemini-3.1-flash-lite-preview,gemini-2.5-flash}"
       GEMINI_SUGGEST_MODELS:   "${GEMINI_SUGGEST_MODELS:-gemini-3.1-flash-lite-preview,gemma-3-27b-it,gemini-2.5-flash,gemma-3-12b-it}"
       GEMINI_RETRY_ATTEMPTS:   "${GEMINI_RETRY_ATTEMPTS:-4}"
-      # ── Anti-detection (override in .env or here to tune) ──────────────────
-      SCRAPER_HEADLESS:              "${SCRAPER_HEADLESS:-false}"
-      BROWSER_LOCALE:                "${BROWSER_LOCALE:-hr-HR}"
-      BROWSER_TIMEZONE:              "${BROWSER_TIMEZONE:-Europe/Zagreb}"
-      DELAY_AFTER_RESULTS_PAGE_MIN:  "${DELAY_AFTER_RESULTS_PAGE_MIN:-1500}"
-      DELAY_AFTER_RESULTS_PAGE_MAX:  "${DELAY_AFTER_RESULTS_PAGE_MAX:-3000}"
-      DELAY_BETWEEN_PAGES_MIN:       "${DELAY_BETWEEN_PAGES_MIN:-2000}"
-      DELAY_BETWEEN_PAGES_MAX:       "${DELAY_BETWEEN_PAGES_MAX:-5000}"
-      DELAY_BETWEEN_LISTINGS_MIN:    "${DELAY_BETWEEN_LISTINGS_MIN:-500}"
-      DELAY_BETWEEN_LISTINGS_MAX:    "${DELAY_BETWEEN_LISTINGS_MAX:-2000}"
-      DELAY_AFTER_LISTING_MIN:       "${DELAY_AFTER_LISTING_MIN:-1000}"
-      DELAY_AFTER_LISTING_MAX:       "${DELAY_AFTER_LISTING_MAX:-2500}"
-      RETRY_MAX_ATTEMPTS:            "${RETRY_MAX_ATTEMPTS:-3}"
-      RETRY_BASE_DELAY_MS:           "${RETRY_BASE_DELAY_MS:-3000}"
+      # ── Anti-detection ─────────────────────────────────────────────────────
+      SCRAPER_HEADLESS:             "${SCRAPER_HEADLESS:-false}"
+      BROWSER_LOCALE:               "${BROWSER_LOCALE:-hr-HR}"
+      BROWSER_TIMEZONE:             "${BROWSER_TIMEZONE:-Europe/Zagreb}"
+      DELAY_AFTER_RESULTS_PAGE_MIN: "${DELAY_AFTER_RESULTS_PAGE_MIN:-1500}"
+      DELAY_AFTER_RESULTS_PAGE_MAX: "${DELAY_AFTER_RESULTS_PAGE_MAX:-3000}"
+      DELAY_BETWEEN_PAGES_MIN:      "${DELAY_BETWEEN_PAGES_MIN:-2000}"
+      DELAY_BETWEEN_PAGES_MAX:      "${DELAY_BETWEEN_PAGES_MAX:-5000}"
+      DELAY_BETWEEN_LISTINGS_MIN:   "${DELAY_BETWEEN_LISTINGS_MIN:-500}"
+      DELAY_BETWEEN_LISTINGS_MAX:   "${DELAY_BETWEEN_LISTINGS_MAX:-2000}"
+      DELAY_AFTER_LISTING_MIN:      "${DELAY_AFTER_LISTING_MIN:-1000}"
+      DELAY_AFTER_LISTING_MAX:      "${DELAY_AFTER_LISTING_MAX:-2500}"
+      RETRY_MAX_ATTEMPTS:           "${RETRY_MAX_ATTEMPTS:-3}"
+      RETRY_BASE_DELAY_MS:          "${RETRY_BASE_DELAY_MS:-3000}"
     profiles:
       - scraper              # does not start on `docker-compose up`
 
