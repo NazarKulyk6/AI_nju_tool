@@ -3,7 +3,15 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { getPool, initDb } from './db';
 import { runScraper, ScraperProgress } from './scraper';
-import { buildSearchUrl } from './utils';
+import { buildSearchUrl, sleep } from './utils';
+import {
+  getUnprocessedListings,
+  analyzeWithAI,
+  saveAnalyzedItems,
+  markListingProcessed,
+} from './ai_analyzer';
+import { startAnalysis, getAnalyzeStatus } from './queue';
+import { config } from './config';
 
 dotenv.config();
 
@@ -61,6 +69,9 @@ let scrapeJob: ScrapeJob = {
   saved:             0,
 };
 
+// Analyze job state is now managed by BullMQ (src/queue.ts).
+// Use getAnalyzeStatus() for reads, startAnalysis() to enqueue.
+
 // ─── API: Stats ───────────────────────────────────────────────────────────────
 app.get('/api/stats', async (_req: Request, res: Response) => {
   try {
@@ -93,14 +104,13 @@ app.get('/api/categories', async (_req: Request, res: Response) => {
   }
 });
 
-// ─── API: Gemini — expand search query into Croatian search terms ─────────────
+// ─── API: AI — expand search query into Croatian search terms ─────────────────
+//
+//  Supports two backends (controlled by AI_BACKEND env var):
+//    'g4f'    → gpt4free Interference API (no API key needed)
+//    'gemini' → Google Gemini API (requires GEMINI_API_KEY)
+//
 app.post('/api/suggest-queries', async (req: Request, res: Response) => {
-  const apiKey = process.env.GEMINI_API_KEY ?? '';
-  if (!apiKey) {
-    res.status(503).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
-    return;
-  }
-
   const userInput = ((req.body?.query as string) ?? '').trim();
   if (!userInput) {
     res.status(400).json({ error: 'Query is required.' });
@@ -122,34 +132,80 @@ Rules:
 Example for input "rtx 2060":
 ["rtx 2060","nvidia 2060","grafička kartica 2060","geforce 2060","2060 super","rtx2060","2060 6gb","vga 2060","nvidia rtx 2060","2060 gaming"]`;
 
-  // Models ordered by preference (highest free-tier RPD first).
-  // Each model is tried in sequence; if one returns 429 we move to the next.
-  // Per AI Studio quota (Apr 2026):
-  //   gemini-3.1-flash-lite-preview → 15 RPM, 500 RPD
-  //   gemma-3-27b-it                → 30 RPM, 14 400 RPD
-  //   gemini-2.5-flash              →  5 RPM,    20 RPD
-  const GEMINI_MODELS = [
-    'gemini-3.1-flash-lite-preview',
-    'gemma-3-27b-it',
-    'gemini-2.5-flash',
-    'gemma-3-12b-it',
-  ];
-  const geminiUrl = (model: string) =>
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-  for (let modelIdx = 0; modelIdx < GEMINI_MODELS.length; modelIdx++) {
-    const model = GEMINI_MODELS[modelIdx];
-    let fetchRes: Awaited<ReturnType<typeof fetch>>;
+  // ── Helper: parse a JSON string array from raw LLM text ────────────────────
+  function parseTerms(raw: string): string[] | null {
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return null;
     try {
-      fetchRes = await fetch(geminiUrl(model), {
+      const arr: string[] = JSON.parse(match[0]);
+      return [...new Set(arr.map((t: string) => t.trim().toLowerCase()).filter(Boolean))];
+    } catch {
+      return null;
+    }
+  }
+
+  // ── G4F backend ────────────────────────────────────────────────────────────
+  if (config.ai.backend === 'g4f') {
+    const { baseUrl, suggestModel } = config.ai.g4f;
+    try {
+      const fetchRes = await fetch(`${baseUrl}/chat/completions`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
+          model:       suggestModel,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.4,
+          max_tokens:  512,
         }),
+      });
+
+      if (!fetchRes.ok) {
+        const errBody = await fetchRes.text();
+        res.status(502).json({ error: `G4F error ${fetchRes.status}: ${errBody.slice(0, 200)}` });
+        return;
+      }
+
+      const data = await fetchRes.json() as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const raw   = data.choices?.[0]?.message?.content ?? '';
+      const terms = parseTerms(raw);
+      if (!terms) {
+        res.status(502).json({ error: 'G4F returned an unexpected format. Try again.' });
+        return;
+      }
+      console.log(`[G4F/${suggestModel}] Expanded "${userInput}" → ${terms.length} terms`);
+      res.json({ terms });
+    } catch (err) {
+      console.error('[G4F] suggest-queries error:', (err as Error).message);
+      res.status(500).json({ error: (err as Error).message });
+    }
+    return;
+  }
+
+  // ── Gemini backend ─────────────────────────────────────────────────────────
+  const apiKey = process.env.GEMINI_API_KEY ?? '';
+  if (!apiKey) {
+    res.status(503).json({ error: 'GEMINI_API_KEY is not configured. Set AI_BACKEND=g4f to use gpt4free instead.' });
+    return;
+  }
+
+  const { suggestModels, retryAttempts } = config.ai.gemini;
+  const geminiUrl = (model: string) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  for (let modelIdx = 0; modelIdx < suggestModels.length; modelIdx++) {
+    const model = suggestModels[modelIdx];
+
+    const bodyPayload = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
+    });
+
+    let fetchRes: Awaited<ReturnType<typeof fetch>>;
+    try {
+      fetchRes = await fetch(geminiUrl(model), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: bodyPayload,
       });
     } catch (err) {
       console.error(`[Gemini/${model}] Network error:`, (err as Error).message);
@@ -157,43 +213,29 @@ Example for input "rtx 2060":
       return;
     }
 
-    // 429 with limit:0 means this model has no quota → try the next one
     if (fetchRes.status === 429) {
       const errBody = await fetchRes.text();
-      const isZeroQuota = errBody.includes('limit: 0');
-
-      if (isZeroQuota && modelIdx + 1 < GEMINI_MODELS.length) {
+      if (errBody.includes('limit: 0') && modelIdx + 1 < suggestModels.length) {
         console.warn(`[Gemini/${model}] Zero quota — switching to next model…`);
         continue;
       }
-
-      // Transient rate-limit: wait and retry the same model once
-      const retryAfterHeader = fetchRes.headers.get('Retry-After');
-      const waitMs = retryAfterHeader ? parseInt(retryAfterHeader, 10) * 1000 : 15_000;
-      console.warn(`[Gemini/${model}] 429 transient — waiting ${waitMs / 1000}s…`);
+      // Transient 429: wait and retry once
+      const waitMs = (() => {
+        const h = fetchRes.headers.get('Retry-After');
+        return h ? parseInt(h, 10) * 1_000 : 15_000;
+      })();
+      console.warn(`[Gemini/${model}] 429 — waiting ${waitMs / 1_000}s…`);
       await sleep(waitMs);
 
-      // One more attempt with the same model
       try {
         fetchRes = await fetch(geminiUrl(model), {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: bodyPayload,
         });
-      } catch (err) {
-        res.status(500).json({ error: (err as Error).message });
-        return;
-      }
+      } catch (err) { res.status(500).json({ error: (err as Error).message }); return; }
 
       if (fetchRes.status === 429) {
-        if (modelIdx + 1 < GEMINI_MODELS.length) {
-          console.warn(`[Gemini/${model}] Still 429 — switching to next model…`);
-          continue;
-        }
-        res.status(429).json({ error: 'All Gemini models are rate-limited. Try again in a minute.' });
+        if (modelIdx + 1 < suggestModels.length) { console.warn(`[Gemini/${model}] Still 429 — next model…`); continue; }
+        res.status(429).json({ error: 'All Gemini models are rate-limited. Try again in a minute or switch to G4F backend.' });
         return;
       }
     }
@@ -201,39 +243,75 @@ Example for input "rtx 2060":
     if (!fetchRes.ok) {
       const errBody = await fetchRes.text();
       console.error(`[Gemini/${model}] Error ${fetchRes.status}:`, errBody.slice(0, 200));
-      // Try next model on server errors too
-      if (modelIdx + 1 < GEMINI_MODELS.length) continue;
+      if (modelIdx + 1 < suggestModels.length) continue;
       res.status(502).json({ error: `Gemini API error ${fetchRes.status}: ${errBody.slice(0, 200)}` });
       return;
     }
 
-    // ── Success ──────────────────────────────────────────────
     const data = await fetchRes.json() as {
       candidates?: { content?: { parts?: { text?: string }[] } }[];
     };
-
     const raw   = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    const match = raw.match(/\[[\s\S]*\]/);
-    if (!match) {
+    const terms = parseTerms(raw);
+    if (!terms) {
       console.error(`[Gemini/${model}] Could not parse JSON:`, raw.slice(0, 200));
-      if (modelIdx + 1 < GEMINI_MODELS.length) continue;   // try next model
+      if (modelIdx + 1 < suggestModels.length) continue;
       res.status(502).json({ error: 'Gemini returned an unexpected format. Try again.' });
       return;
     }
 
-    try {
-      const terms: string[] = JSON.parse(match[0]);
-      const unique = [...new Set(terms.map((t: string) => t.trim().toLowerCase()).filter(Boolean))];
-      console.log(`[Gemini/${model}] Expanded "${userInput}" → ${unique.length} terms`);
-      res.json({ terms: unique });
-    } catch {
-      res.status(502).json({ error: 'Failed to parse Gemini response as JSON.' });
-    }
-    return;   // success — exit loop
+    console.log(`[Gemini/${model}] Expanded "${userInput}" → ${terms.length} terms`);
+    res.json({ terms });
+    return;
   }
 
-  // All models exhausted without success
   res.status(502).json({ error: 'All Gemini models failed. Check your API key and quota.' });
+});
+
+// ─── API: Count unprocessed listings ─────────────────────────────────────────
+app.get('/api/analyze/count', async (_req: Request, res: Response) => {
+  try {
+    const r = await getPool().query(
+      `SELECT COUNT(*) AS count FROM listings WHERE processed = FALSE`,
+    );
+    res.json({ count: parseInt(r.rows[0].count, 10) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── API: Analyze job status ──────────────────────────────────────────────────
+app.get('/api/analyze/status', async (_req: Request, res: Response) => {
+  try {
+    res.json(await getAnalyzeStatus());
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── API: Start AI analysis of already-scraped listings ───────────────────────
+app.post('/api/analyze', async (req: Request, res: Response) => {
+  try {
+    const current = await getAnalyzeStatus();
+    if (current.status === 'running') {
+      res.status(409).json({ error: 'Analyzer already running', job: current });
+      return;
+    }
+
+    const listings = await getUnprocessedListings();
+    if (listings.length === 0) {
+      res.json({ ok: true, message: 'No unprocessed listings found.', job: current });
+      return;
+    }
+
+    // Enqueue all unprocessed listings into Redis.
+    // The BullMQ worker (src/queue.ts) picks them up immediately.
+    await startAnalysis(listings.map(l => ({ id: l.id, title: l.title, url: l.url })));
+
+    res.json({ ok: true, job: await getAnalyzeStatus() });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 // ─── API: Trigger scrape (supports multiple queries) ──────────────────────────
@@ -424,9 +502,84 @@ app.get('/api/listings/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ─── API: Analyzer stats ──────────────────────────────────────────────────────
+app.get('/api/analyzed-stats', async (_req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const [items, pending, analyzed, cats] = await Promise.all([
+      pool.query(`SELECT COUNT(*) AS count FROM analyzed_items`),
+      pool.query(`SELECT COUNT(*) AS count FROM listings WHERE processed = FALSE`),
+      pool.query(`SELECT COUNT(*) AS count FROM listings WHERE processed = TRUE`),
+      pool.query(`
+        SELECT category, COUNT(*) AS count
+        FROM analyzed_items
+        GROUP BY category ORDER BY count DESC
+      `),
+    ]);
+    res.json({
+      total_items:         parseInt(items.rows[0].count,    10),
+      pending_listings:    parseInt(pending.rows[0].count,  10),
+      analyzed_listings:   parseInt(analyzed.rows[0].count, 10),
+      categories:          cats.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── API: Browse analyzed items ───────────────────────────────────────────────
+app.get('/api/analyzed-items', async (req: Request, res: Response) => {
+  const category    = ((req.query.category    as string) ?? '').trim() || null;
+  const subcategory = ((req.query.subcategory as string) ?? '').trim() || null;
+  const type        = ((req.query.type        as string) ?? '').trim() || null;
+  const q           = ((req.query.q           as string) ?? '').trim() || null;
+  const page        = Math.max(1, parseInt((req.query.page  as string) ?? '1',  10));
+  const limit       = Math.min(48, Math.max(1, parseInt((req.query.limit as string) ?? '24', 10)));
+  const offset      = (page - 1) * limit;
+
+  try {
+    const pool = getPool();
+    const conds: string[] = [];
+    const params: unknown[] = [];
+
+    if (category)    { params.push(category);    conds.push(`ai.category    = $${params.length}`); }
+    if (subcategory) { params.push(subcategory);  conds.push(`ai.subcategory = $${params.length}`); }
+    if (type)        { params.push(type);          conds.push(`ai.type        = $${params.length}`); }
+    if (q)           { params.push(`%${q}%`);      conds.push(`ai.title ILIKE $${params.length}`); }
+
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+    const dataQ = `
+      SELECT ai.id, ai.listing_id, ai.category, ai.subcategory, ai.type,
+             ai.title, ai.price, ai.capacity_gb, ai.ram_gb, ai.cpu, ai.storage_gb,
+             ai.created_at, l.url
+      FROM analyzed_items ai
+      LEFT JOIN listings l ON l.id = ai.listing_id
+      ${where}
+      ORDER BY ai.created_at DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
+
+    const [rows, count] = await Promise.all([
+      pool.query(dataQ, [...params, limit, offset]),
+      pool.query(`SELECT COUNT(*) FROM analyzed_items ai ${where}`, params),
+    ]);
+
+    const total      = parseInt(count.rows[0].count, 10);
+    const totalPages = Math.ceil(total / limit);
+    res.json({ data: rows.rows, pagination: { page, limit, total, totalPages } });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // ─── Page routes ──────────────────────────────────────────────────────────────
 app.get('/scraper', (_req: Request, res: Response) => {
   res.sendFile(path.join(PUBLIC_DIR, 'scraper.html'));
+});
+
+app.get('/analyzer', (_req: Request, res: Response) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'analyzer.html'));
 });
 
 // SPA fallback — all other routes serve the listings page

@@ -1,21 +1,44 @@
-version: "3.9"
-
 # ─────────────────────────────────────────────────────────────────────────────
-#  docker-compose up -d              → start DB + web server
-#  docker-compose run --rm scraper   → run scraper interactively (CLI)
+#  docker compose up -d                       → start DB + web server
+#  docker compose --profile ai up -d          → also start g4f (AI_BACKEND=g4f)
+#  docker compose run --rm scraper            → run scraper interactively (CLI)
 #  Website: http://localhost:3001
+#  G4F API: http://localhost:1337/v1  (when --profile ai is active)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 #  Network njuskalo_net (bridge):
-#  ┌─────────────────────────────────────────────────────────────┐
-#  │  web      → db:5432   (Express API + static files)          │
-#  │  scraper  → db:5432   (Playwright, run manually)            │
-#  └─────────────────────────────────────────────────────────────┘
-#  Host: localhost:5438 → db:5432  (external DB client)
-#  Host: localhost:3001 → web:3000 (browser)
+#  ┌──────────────────────────────────────────────────────────────────────┐
+#  │  web      → db:5432          (Express API + static files)            │
+#  │  web      → g4f:8080/v1      (AI calls when AI_BACKEND=g4f)         │
+#  │  scraper  → db:5432          (Playwright, run manually)              │
+#  │  g4f      → (internet)       (gpt4free provider requests)            │
+#  └──────────────────────────────────────────────────────────────────────┘
+#  Host: localhost:5438 → db:5432   (external DB client)
+#  Host: localhost:3001 → web:3000  (browser)
+#  Host: localhost:1337 → g4f:8080  (external G4F API access)
+#  Host: localhost:6379 → redis:6379 (external Redis access)
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+
+  # ── Redis (job queue + persistence) ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: njuskalo_redis
+    restart: unless-stopped
+    networks:
+      - njuskalo_net
+    ports:
+      - "6379:6379"       # host access (redis-cli, RedisInsight, etc.)
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes   # persist queue to disk
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   db:
@@ -39,6 +62,38 @@ services:
       retries: 10
       start_period: 10s
 
+  # ── G4F (gpt4free Interference API) ─────────────────────────────────────────
+  # Provides a FREE OpenAI-compatible REST API at http://g4f:8080/v1 (internal)
+  # and http://localhost:1337/v1 (external).
+  # Start with:  docker compose --profile ai up -d
+  # Required when AI_BACKEND=g4f (the default).
+  g4f:
+    build:
+      context: ./g4f_bridge
+      dockerfile: Dockerfile
+    container_name: njuskalo_g4f
+    restart: unless-stopped
+    networks:
+      - njuskalo_net
+    ports:
+      - "1337:8080"         # OpenAI-compatible API: http://localhost:1337/v1
+    environment:
+      # Comma-separated "Provider:model" pairs, tried left-to-right
+      G4F_PROVIDERS:         "${G4F_PROVIDERS:-PollinationsAI:openai-fast:1,Yqcloud:gpt-4:3}"
+      # Circuit-breaker settings
+      G4F_FAILURE_THRESHOLD: "${G4F_FAILURE_THRESHOLD:-3}"   # failures before tripping
+      G4F_RESET_AFTER_SEC:   "${G4F_RESET_AFTER_SEC:-300}"   # seconds until auto-reset
+      G4F_MAX_RETRIES:       "${G4F_MAX_RETRIES:-2}"          # retries per provider per request
+      G4F_CALL_TIMEOUT:      "${G4F_CALL_TIMEOUT:-60}"        # per-call timeout (seconds)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - ai                  # opt-in: docker compose --profile ai up -d
+
   # ── Web server ──────────────────────────────────────────────────────────────
   web:
     build:
@@ -52,6 +107,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DB_HOST:     db       # service hostname inside njuskalo_net
       DB_PORT:     "5432"   # internal container port
@@ -59,7 +116,23 @@ services:
       DB_USER:     postgres
       DB_PASSWORD: postgres
       PORT:        "3000"
-      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      # ── Redis (BullMQ queue) ────────────────────────────────────────────────
+      REDIS_HOST:  redis
+      REDIS_PORT:  "6379"
+      # ── AI Backend ─────────────────────────────────────────────────────────
+      AI_BACKEND:              "${AI_BACKEND:-g4f}"
+      AI_CONCURRENCY:          "${AI_CONCURRENCY:-3}"
+      # G4F: 300ms between calls is enough.  Gemini: keep ≥2000 (30 RPM limit).
+      AI_CALL_DELAY_MS:        "${AI_CALL_DELAY_MS:-300}"
+      # G4F settings (used when AI_BACKEND=g4f)
+      G4F_BASE_URL:            "${G4F_BASE_URL:-http://g4f:8080/v1}"
+      G4F_ANALYZER_MODEL:      "${G4F_ANALYZER_MODEL:-openai-fast}"
+      G4F_SUGGEST_MODEL:       "${G4F_SUGGEST_MODEL:-openai-fast}"
+      # Gemini settings (used when AI_BACKEND=gemini)
+      GEMINI_API_KEY:          "${GEMINI_API_KEY:-}"
+      GEMINI_ANALYZER_MODELS:  "${GEMINI_ANALYZER_MODELS:-gemma-3-27b-it,gemma-3-12b-it,gemini-3.1-flash-lite-preview,gemini-2.5-flash}"
+      GEMINI_SUGGEST_MODELS:   "${GEMINI_SUGGEST_MODELS:-gemini-3.1-flash-lite-preview,gemma-3-27b-it,gemini-2.5-flash,gemma-3-12b-it}"
+      GEMINI_RETRY_ATTEMPTS:   "${GEMINI_RETRY_ATTEMPTS:-4}"
       # ── Anti-detection (override in .env or here to tune) ──────────────────
       SCRAPER_HEADLESS:              "${SCRAPER_HEADLESS:-false}"
       BROWSER_LOCALE:                "${BROWSER_LOCALE:-hr-HR}"
@@ -97,6 +170,17 @@ services:
       DB_NAME:     scraper
       DB_USER:     postgres
       DB_PASSWORD: postgres
+      # ── AI Backend ─────────────────────────────────────────────────────────
+      AI_BACKEND:              "${AI_BACKEND:-g4f}"
+      AI_CONCURRENCY:          "${AI_CONCURRENCY:-3}"
+      AI_CALL_DELAY_MS:        "${AI_CALL_DELAY_MS:-300}"
+      G4F_BASE_URL:            "${G4F_BASE_URL:-http://g4f:8080/v1}"
+      G4F_ANALYZER_MODEL:      "${G4F_ANALYZER_MODEL:-openai-fast}"
+      G4F_SUGGEST_MODEL:       "${G4F_SUGGEST_MODEL:-openai-fast}"
+      GEMINI_API_KEY:          "${GEMINI_API_KEY:-}"
+      GEMINI_ANALYZER_MODELS:  "${GEMINI_ANALYZER_MODELS:-gemma-3-27b-it,gemma-3-12b-it,gemini-3.1-flash-lite-preview,gemini-2.5-flash}"
+      GEMINI_SUGGEST_MODELS:   "${GEMINI_SUGGEST_MODELS:-gemini-3.1-flash-lite-preview,gemma-3-27b-it,gemini-2.5-flash,gemma-3-12b-it}"
+      GEMINI_RETRY_ATTEMPTS:   "${GEMINI_RETRY_ATTEMPTS:-4}"
       # ── Anti-detection (override in .env or here to tune) ──────────────────
       SCRAPER_HEADLESS:              "${SCRAPER_HEADLESS:-false}"
       BROWSER_LOCALE:                "${BROWSER_LOCALE:-hr-HR}"
@@ -122,4 +206,6 @@ networks:
 # ─── Named volumes ─────────────────────────────────────────────────────────────
 volumes:
   pg_data:
+    driver: local
+  redis_data:
     driver: local

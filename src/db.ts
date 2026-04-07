@@ -107,7 +107,32 @@ export async function initDb(): Promise<void> {
       CREATE UNIQUE INDEX IF NOT EXISTS pending_urls_job_url_uq ON pending_urls (job_id, url);
     `);
 
-    console.log('[DB] Tables "listings" and "pending_urls" ready.');
+    // Step 6 — add "processed" flag to listings (used by the AI analyzer)
+    await client.query(`
+      ALTER TABLE listings ADD COLUMN IF NOT EXISTS processed BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+
+    // Step 7 — analyzed_items: structured output produced by the AI analyzer
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS analyzed_items (
+        id           SERIAL  PRIMARY KEY,
+        listing_id   INTEGER REFERENCES listings(id) ON DELETE CASCADE,
+        category     TEXT,
+        subcategory  TEXT,
+        type         TEXT,
+        title        TEXT,
+        price        NUMERIC,
+        capacity_gb  INTEGER,
+        ram_gb       INTEGER,
+        cpu          TEXT,
+        storage_gb   INTEGER,
+        raw          JSONB,
+        created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS analyzed_items_listing_idx ON analyzed_items (listing_id);
+    `);
+
+    console.log('[DB] Tables "listings", "pending_urls", and "analyzed_items" ready.');
   } finally {
     client.release();
   }

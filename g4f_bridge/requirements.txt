@@ -1,0 +1,3 @@
+g4f[all]
+fastapi
+uvicorn[standard]

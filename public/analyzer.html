@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Analyzer — Njuskalo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0d0f18;
+      --surface:    #161927;
+      --surface2:   #1e2235;
+      --surface3:   #252a40;
+      --accent:     #fdcd00;
+      --accent2:    #ff8c00;
+      --text:       #e4e8f4;
+      --text-muted: #6b738f;
+      --text-dim:   #9099b5;
+      --border:     #252a40;
+      --green:      #4ade80;
+      --red:        #f87171;
+      --purple:     #a78bfa;
+      --radius:     14px;
+      --radius-sm:  8px;
+      --transition: .18s ease;
+    }
+
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.6; }
+
+    /* ── Header ── */
+    header { background: linear-gradient(135deg, #161927 0%, #1a1e30 100%); border-bottom: 1px solid var(--border); padding: 18px 24px; position: sticky; top: 0; z-index: 100; }
+    .header-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-icon { width: 34px; height: 34px; background: var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+    .logo h1 { font-size: 1.15rem; font-weight: 700; color: var(--text); }
+    .logo span { color: var(--accent); }
+    nav { display: flex; gap: 6px; }
+    .nav-link { padding: 7px 16px; border-radius: var(--radius-sm); font-size: .83rem; font-weight: 600; text-decoration: none; color: var(--text-muted); border: 1.5px solid transparent; transition: all var(--transition); }
+    .nav-link:hover  { color: var(--text); border-color: var(--border); }
+    .nav-link.active { color: var(--purple); border-color: rgba(167,139,250,.3); background: rgba(167,139,250,.07); }
+
+    /* ── Layout ── */
+    main { max-width: 1200px; margin: 0 auto; padding: 28px 20px 80px; display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── Card ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 26px; }
+    .card-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .card-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .badge { font-size: .65rem; padding: 2px 8px; border-radius: 10px; background: rgba(167,139,250,.15); color: var(--purple); font-weight: 600; text-transform: none; letter-spacing: 0; }
+
+    /* ── Stats ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .stat-box { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; }
+    .stat-box-label { font-size: .7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 5px; }
+    .stat-box-value { font-size: 1.7rem; font-weight: 800; color: var(--accent); line-height: 1; }
+    .stat-box-sub   { font-size: .72rem; color: var(--text-muted); margin-top: 3px; }
+
+    /* ── Analyzer run section ── */
+    .run-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .btn-primary { height: 44px; padding: 0 24px; border: none; border-radius: var(--radius-sm); background: var(--purple); color: #fff; font-size: .9rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all var(--transition); white-space: nowrap; flex-shrink: 0; }
+    .btn-primary:hover    { background: #9171f8; }
+    .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .6s linear infinite; display: none; }
+    .btn-primary.loading .btn-spinner { display: block; }
+    .btn-primary.loading .btn-icon    { display: none; }
+
+    /* ── Status block ── */
+    .status-block { border-radius: var(--radius-sm); padding: 14px 16px; font-size: .88rem; border: 1px solid transparent; display: none; }
+    .status-block.visible { display: block; }
+    .status-block.running { background: rgba(253,205,0,.07); border-color: rgba(253,205,0,.22); }
+    .status-block.done    { background: rgba(74,222,128,.07); border-color: rgba(74,222,128,.22); }
+    .status-block.error   { background: rgba(248,113,113,.07); border-color: rgba(248,113,113,.22); }
+    .status-top { display: flex; align-items: center; gap: 10px; }
+    .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(253,205,0,.3); border-top-color: var(--accent); animation: spin .7s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .prog-info { display: flex; justify-content: space-between; font-size: .8rem; color: var(--text-muted); margin-bottom: 6px; }
+    .prog-bar-wrap { background: var(--surface3); border-radius: 6px; height: 8px; overflow: hidden; }
+    .prog-bar { height: 100%; background: var(--purple); border-radius: 6px; transition: width .4s ease; }
+
+    /* ── Filters ── */
+    .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+    .filter-group { display: flex; flex-direction: column; gap: 5px; min-width: 140px; }
+    .filter-group label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); }
+    .filter-select, .filter-input {
+      background: var(--surface2); border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-size: .88rem;
+      padding: 9px 12px; outline: none; transition: border-color var(--transition);
+      height: 40px;
+    }
+    .filter-select option { background: var(--surface2); }
+    .filter-input { flex: 1; min-width: 180px; }
+    .filter-select:focus, .filter-input:focus { border-color: var(--purple); }
+    .filter-input::placeholder { color: var(--text-muted); }
+    .btn-clear-filters { height: 40px; padding: 0 14px; background: none; border: 1.5px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); font-size: .82rem; cursor: pointer; white-space: nowrap; transition: all var(--transition); }
+    .btn-clear-filters:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Active filter chips ── */
+    .active-filters { display: none; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .active-filters.visible { display: flex; }
+    .filter-chip { display: flex; align-items: center; gap: 5px; background: rgba(167,139,250,.12); border: 1px solid rgba(167,139,250,.3); color: var(--purple); font-size: .75rem; font-weight: 600; padding: 3px 10px; border-radius: 14px; }
+    .filter-chip button { background: none; border: none; color: inherit; cursor: pointer; font-size: .85rem; padding: 0; opacity: .7; }
+    .filter-chip button:hover { opacity: 1; }
+
+    /* ── Results header ── */
+    .results-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .results-count { font-size: .88rem; color: var(--text-muted); }
+    .results-count strong { color: var(--text); }
+
+    /* ── Grid ── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+
+    /* ── Item card ── */
+    .item-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px 18px; display: flex; flex-direction: column; gap: 8px;
+      transition: transform var(--transition), border-color var(--transition);
+    }
+    .item-card:hover { transform: translateY(-2px); border-color: rgba(167,139,250,.35); }
+    .item-breadcrumb { font-size: .68rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .item-breadcrumb .sep { opacity: .4; }
+    .item-breadcrumb .tier1 { color: var(--purple); }
+    .item-breadcrumb .tier2 { color: var(--text-dim); }
+    .item-breadcrumb .tier3 { color: var(--accent2); }
+    .item-title { font-size: .95rem; font-weight: 600; color: var(--text); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .item-price { display: inline-flex; align-items: center; background: rgba(253,205,0,.12); color: var(--accent); font-weight: 700; font-size: .9rem; padding: 3px 10px; border-radius: 6px; align-self: flex-start; }
+    .item-price.no-price { background: var(--surface2); color: var(--text-muted); font-weight: 400; font-size: .78rem; }
+    .item-specs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .spec-tag { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); font-size: .72rem; padding: 2px 8px; border-radius: 5px; }
+    .item-link { display: flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: .76rem; text-decoration: none; margin-top: auto; padding-top: 4px; transition: color var(--transition); }
+    .item-link:hover { color: var(--accent); }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty p { font-size: .9rem; }
+
+    /* ── Pagination ── */
+    .pagination { display: flex; justify-content: center; gap: 6px; margin-top: 24px; flex-wrap: wrap; }
+    .page-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); font-size: .82rem; padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer; transition: all var(--transition); }
+    .page-btn:hover  { border-color: var(--purple); color: var(--purple); }
+    .page-btn.active { background: var(--purple); border-color: var(--purple); color: #fff; font-weight: 700; }
+    .page-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+    /* ── Loading ── */
+    .loading-overlay { text-align: center; padding: 40px; color: var(--text-muted); font-size: .9rem; }
+    .loading-dots::after { content: '…'; animation: dots 1.2s infinite; }
+    @keyframes dots { 0%,20% { content: '.'; } 40%,60% { content: '..'; } 80%,100% { content: '…'; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a href="/" class="logo">
+      <div class="logo-icon">🤖</div>
+      <h1>AI <span>Analyzer</span></h1>
+    </a>
+    <nav>
+      <a href="/"        class="nav-link">← Listings</a>
+      <a href="/scraper" class="nav-link">Scraper</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Stats ── -->
+  <div class="card">
+    <div class="card-title">Analysis Stats</div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-box-label">Analyzed items</div>
+        <div class="stat-box-value" id="s-total">—</div>
+        <div class="stat-box-sub">in analyzed_items table</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-label">Analyzed listings</div>
+        <div class="stat-box-value" id="s-analyzed">—</div>
+        <div class="stat-box-sub">listings processed</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-label">Pending</div>
+        <div class="stat-box-value" id="s-pending">—</div>
+        <div class="stat-box-sub">listings not yet analyzed</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-label">Categories</div>
+        <div class="stat-box-value" id="s-cats">—</div>
+        <div class="stat-box-sub">tier-1 categories found</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Run Analyzer ── -->
+  <div class="card">
+    <div class="card-title">Run AI Analyzer <span class="badge">Gemini</span></div>
+    <p style="font-size:.85rem;color:var(--text-dim);margin-bottom:16px">
+      Reads all unprocessed scraped listings and classifies each into a structured
+      3-tier category tree (e.g. <em>electronics → storage → ssd</em>) using Gemini AI.
+      Listings are marked as processed after analysis so they are never re-sent.
+    </p>
+    <div class="run-row">
+      <button class="btn-primary" id="btn-analyze">
+        <span class="btn-icon">🤖</span>
+        <span class="btn-spinner"></span>
+        Run Analyzer
+      </button>
+      <div id="az-status-block" class="status-block" style="flex:1">
+        <div class="status-top">
+          <div class="spinner" id="az-spinner" style="display:none"></div>
+          <div id="az-status-msg" style="flex:1"></div>
+          <div id="az-timer" style="font-size:.75rem;color:var(--text-muted);margin-left:8px"></div>
+        </div>
+        <div id="az-prog-row" style="margin-top:10px;display:none">
+          <div class="prog-info">
+            <span id="az-prog-text"></span>
+            <span id="az-prog-pct"></span>
+          </div>
+          <div class="prog-bar-wrap"><div class="prog-bar" id="az-prog-bar" style="width:0%"></div></div>
+          <div id="az-prog-title" style="font-size:.74rem;color:var(--text-muted);margin-top:5px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Browse Results ── -->
+  <div class="card">
+    <div class="card-title">Browse Analyzed Items</div>
+
+    <!-- Filters -->
+    <div class="filters" id="filters">
+      <div class="filter-group" style="flex:1;min-width:180px">
+        <label>Search</label>
+        <input type="text" class="filter-input" id="f-q" placeholder="Search by title…" />
+      </div>
+      <div class="filter-group">
+        <label>Category (Tier 1)</label>
+        <select class="filter-select" id="f-cat">
+          <option value="">All categories</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Subcategory (Tier 2)</label>
+        <select class="filter-select" id="f-sub" disabled>
+          <option value="">All subcategories</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Type (Tier 3)</label>
+        <select class="filter-select" id="f-type" disabled>
+          <option value="">All types</option>
+        </select>
+      </div>
+      <button class="btn-clear-filters" id="btn-clear" style="align-self:flex-end">✕ Clear</button>
+    </div>
+
+    <!-- Active filter chips -->
+    <div class="active-filters" id="active-filters"></div>
+
+    <!-- Results -->
+    <div style="margin-top:20px">
+      <div class="results-header">
+        <div class="results-count" id="results-count"></div>
+      </div>
+      <div id="items-container" style="margin-top:12px">
+        <div class="loading-overlay"><span class="loading-dots">Loading</span></div>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ── Category structure (mirrors ai_analyzer.ts AI prompt) ── */
+const CATEGORIES = {
+  electronics:  { computers: ['laptop','desktop','mini_pc','other_computers'], phones: ['smartphone','other_phones'], audio: ['headphones','speakers','other_audio'], tv: ['tv','other_tv'], gaming: ['console','other_gaming'], components: ['cpu','gpu','ram','motherboard','other_components'], storage: ['ssd','hdd','usb','sd_card','other_storage'], other: ['other_electronics'] },
+  vehicles:     { cars: ['car','other_cars'], motorcycles: ['motorcycle','other_motorcycles'], trucks: ['truck','other_trucks'], boats: ['boat','other_boats'], parts: ['car_part','other_parts'], other: ['other_vehicles'] },
+  real_estate:  { all: ['apartment','house','land','rent_property','other_real_estate'] },
+  home:         { furniture: ['sofa','table','chair','other_furniture'], appliances: ['washing_machine','fridge','other_appliances'], tools: ['drill','saw','other_tools'], garden: ['lawnmower','other_garden'], other: ['other_home'] },
+  sports:       { fitness: ['treadmill','weights','other_fitness'], cycling: ['bicycle','other_cycling'], water_sports: ['sup_board','swim_fins','kayak','other_water_sports'], winter_sports: ['skis','snowboard','other_winter_sports'], outdoor: ['tent','backpack','other_outdoor'], other: ['other_sports'] },
+  clothing:     { men: ['men_clothes','other_men'], women: ['women_clothes','other_women'], shoes: ['shoes','other_shoes'], accessories: ['bag','watch','other_accessories'], other: ['other_clothing'] },
+  kids:         { toys: ['toy','other_toys'], strollers: ['stroller','other_strollers'], clothes: ['kids_clothes','other_kids_clothes'], other: ['other_kids'] },
+  animals:      { pets: ['animal','other_pets'], equipment: ['pet_item','other_pet_items'], other: ['other_animals'] },
+  services:     { repair: ['repair_service','other_repair'], it: ['it_service','other_it'], transport: ['transport_service','other_transport'], education: ['education_service','other_education'], other: ['other_services'] },
+  jobs:         { it: ['it_job','other_it_jobs'], construction: ['construction_job','other_construction'], sales: ['sales_job','other_sales'], other: ['other_jobs'] },
+  hobby:        { collectibles: ['collectible','other_collectibles'], music: ['instrument','other_music'], books: ['book','other_books'], other: ['other_hobby'] },
+  business:     { equipment: ['business_equipment','other_equipment'], inventory: ['inventory','other_inventory'], other: ['other_business'] },
+  other:        { other: ['unknown'] },
+};
+
+/* ── State ── */
+let currentPage = 1;
+let filters = { q: '', category: '', subcategory: '', type: '' };
+let debounceTimer = null;
+let azPollTimer = null;
+let azTimerInterval = null;
+let azStartedAt = null;
+
+/* ── DOM ── */
+const fQ    = document.getElementById('f-q');
+const fCat  = document.getElementById('f-cat');
+const fSub  = document.getElementById('f-sub');
+const fType = document.getElementById('f-type');
+const btnClear   = document.getElementById('btn-clear');
+const btnAnalyze = document.getElementById('btn-analyze');
+const azStatusBlock = document.getElementById('az-status-block');
+const azStatusMsg   = document.getElementById('az-status-msg');
+const azSpinner     = document.getElementById('az-spinner');
+const azProgRow     = document.getElementById('az-prog-row');
+const azProgText    = document.getElementById('az-prog-text');
+const azProgPct     = document.getElementById('az-prog-pct');
+const azProgBar     = document.getElementById('az-prog-bar');
+const azProgTitle   = document.getElementById('az-prog-title');
+const azTimerEl     = document.getElementById('az-timer');
+const itemsContainer = document.getElementById('items-container');
+const pagination     = document.getElementById('pagination');
+const resultsCount   = document.getElementById('results-count');
+const activeFilters  = document.getElementById('active-filters');
+
+/* ── Utils ── */
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function elapsed(isoStart) {
+  if (!isoStart) return '';
+  const s = Math.floor((Date.now() - new Date(isoStart)) / 1000);
+  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+}
+
+/* ── Populate category dropdowns from CATEGORIES constant ── */
+function populateTier1() {
+  fCat.innerHTML = '<option value="">All categories</option>';
+  Object.keys(CATEGORIES).forEach(cat => {
+    fCat.innerHTML += `<option value="${cat}">${cat}</option>`;
+  });
+}
+
+function populateTier2(cat) {
+  fSub.innerHTML = '<option value="">All subcategories</option>';
+  fSub.disabled = !cat;
+  if (!cat || !CATEGORIES[cat]) return;
+  Object.keys(CATEGORIES[cat]).forEach(sub => {
+    fSub.innerHTML += `<option value="${sub}">${sub}</option>`;
+  });
+}
+
+function populateTier3(cat, sub) {
+  fType.innerHTML = '<option value="">All types</option>';
+  fType.disabled = !sub;
+  if (!cat || !sub || !CATEGORIES[cat]?.[sub]) return;
+  CATEGORIES[cat][sub].forEach(t => {
+    fType.innerHTML += `<option value="${t}">${t}</option>`;
+  });
+}
+
+/* ── Stats ── */
+async function loadStats() {
+  try {
+    const r = await fetch('/api/analyzed-stats');
+    const s = await r.json();
+    document.getElementById('s-total').textContent    = s.total_items ?? '—';
+    document.getElementById('s-analyzed').textContent = s.analyzed_listings ?? '—';
+    document.getElementById('s-pending').textContent  = s.pending_listings ?? '—';
+    document.getElementById('s-cats').textContent     = (s.categories ?? []).length;
+    document.getElementById('s-pending').closest('.stat-box').style.borderColor =
+      s.pending_listings > 0 ? 'rgba(253,205,0,.35)' : '';
+  } catch { /* ignore */ }
+}
+
+/* ── Active filter chips ── */
+function renderActiveFilters() {
+  const chips = [];
+  if (filters.category)    chips.push({ key: 'category',    label: `Tier 1: ${filters.category}` });
+  if (filters.subcategory) chips.push({ key: 'subcategory', label: `Tier 2: ${filters.subcategory}` });
+  if (filters.type)        chips.push({ key: 'type',        label: `Type: ${filters.type}` });
+  if (filters.q)           chips.push({ key: 'q',           label: `"${filters.q}"` });
+
+  if (!chips.length) { activeFilters.classList.remove('visible'); return; }
+  activeFilters.classList.add('visible');
+  activeFilters.innerHTML = chips.map(c =>
+    `<div class="filter-chip">${esc(c.label)}<button onclick="clearFilter('${c.key}')">×</button></div>`
+  ).join('');
+}
+
+function clearFilter(key) {
+  filters[key] = '';
+  if (key === 'category')    { fCat.value = ''; filters.subcategory = ''; filters.type = ''; fSub.value = ''; fType.value = ''; populateTier2(''); populateTier3('',''); }
+  if (key === 'subcategory') { fSub.value = ''; filters.type = ''; fType.value = ''; populateTier3('',''); }
+  if (key === 'type')        { fType.value = ''; }
+  if (key === 'q')           { fQ.value = ''; }
+  currentPage = 1;
+  loadItems();
+}
+
+/* ── Fetch & render items ── */
+// silent=true → don't show "Loading…" spinner (used during live polling)
+async function loadItems({ silent = false } = {}) {
+  if (!silent) {
+    itemsContainer.innerHTML = '<div class="loading-overlay"><span class="loading-dots">Loading</span></div>';
+    pagination.innerHTML = '';
+  }
+  renderActiveFilters();
+
+  const params = new URLSearchParams({ page: currentPage, limit: 24 });
+  if (filters.q)           params.set('q',           filters.q);
+  if (filters.category)    params.set('category',    filters.category);
+  if (filters.subcategory) params.set('subcategory', filters.subcategory);
+  if (filters.type)        params.set('type',        filters.type);
+
+  try {
+    const r    = await fetch(`/api/analyzed-items?${params}`);
+    const json = await r.json();
+    renderItems(json.data ?? []);
+    renderPagination(json.pagination ?? {});
+    const total = json.pagination?.total ?? 0;
+    resultsCount.innerHTML = `<strong>${total.toLocaleString()}</strong> item${total !== 1 ? 's' : ''}`;
+  } catch (err) {
+    if (!silent)
+      itemsContainer.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>${esc(err.message)}</p></div>`;
+  }
+}
+
+function renderItems(items) {
+  if (!items.length) {
+    itemsContainer.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><p>No items match the current filters.</p></div>`;
+    return;
+  }
+  itemsContainer.innerHTML = `<div class="grid">${items.map(renderCard).join('')}</div>`;
+}
+
+function renderCard(item) {
+  const breadcrumb = [
+    item.category    ? `<span class="tier1">${esc(item.category)}</span>`    : '',
+    item.subcategory ? `<span class="sep">›</span><span class="tier2">${esc(item.subcategory)}</span>` : '',
+    item.type        ? `<span class="sep">›</span><span class="tier3">${esc(item.type)}</span>`        : '',
+  ].join('');
+
+  const priceHtml = item.price != null
+    ? `<div class="item-price">€ ${parseFloat(item.price).toLocaleString()}</div>`
+    : `<div class="item-price no-price">No price</div>`;
+
+  const specs = [];
+  if (item.capacity_gb) specs.push(`${item.capacity_gb} GB`);
+  if (item.ram_gb)      specs.push(`RAM ${item.ram_gb} GB`);
+  if (item.storage_gb)  specs.push(`Storage ${item.storage_gb} GB`);
+  if (item.cpu)         specs.push(item.cpu);
+  const specsHtml = specs.length
+    ? `<div class="item-specs">${specs.map(s => `<span class="spec-tag">${esc(s)}</span>`).join('')}</div>`
+    : '';
+
+  const linkHtml = item.url
+    ? `<a class="item-link" href="${esc(item.url)}" target="_blank" rel="noopener">↗ View original listing</a>`
+    : '';
+
+  return `
+    <div class="item-card">
+      <div class="item-breadcrumb">${breadcrumb || '<span style="color:var(--text-muted)">uncategorized</span>'}</div>
+      <div class="item-title">${esc(item.title ?? 'Untitled')}</div>
+      ${priceHtml}
+      ${specsHtml}
+      ${linkHtml}
+    </div>`;
+}
+
+function renderPagination(p) {
+  if (!p.totalPages || p.totalPages <= 1) return;
+  const buttons = [];
+  buttons.push(`<button class="page-btn" ${p.page<=1?'disabled':''} onclick="goPage(${p.page-1})">‹</button>`);
+  const start = Math.max(1, p.page - 2);
+  const end   = Math.min(p.totalPages, p.page + 2);
+  if (start > 1) buttons.push(`<button class="page-btn" onclick="goPage(1)">1</button>${start>2?'<span style="color:var(--text-muted);padding:0 4px">…</span>':''}`);
+  for (let i = start; i <= end; i++) {
+    buttons.push(`<button class="page-btn ${i===p.page?'active':''}" onclick="goPage(${i})">${i}</button>`);
+  }
+  if (end < p.totalPages) buttons.push(`${end<p.totalPages-1?'<span style="color:var(--text-muted);padding:0 4px">…</span>':''}<button class="page-btn" onclick="goPage(${p.totalPages})">${p.totalPages}</button>`);
+  buttons.push(`<button class="page-btn" ${p.page>=p.totalPages?'disabled':''} onclick="goPage(${p.page+1})">›</button>`);
+  pagination.innerHTML = buttons.join('');
+}
+
+function goPage(n) { currentPage = n; loadItems(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+/* ── Filter events ── */
+fQ.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => { filters.q = fQ.value.trim(); currentPage = 1; loadItems(); }, 350);
+});
+
+fCat.addEventListener('change', () => {
+  filters.category = fCat.value;
+  filters.subcategory = '';
+  filters.type = '';
+  fSub.value = '';
+  fType.value = '';
+  populateTier2(fCat.value);
+  populateTier3('', '');
+  currentPage = 1;
+  loadItems();
+});
+
+fSub.addEventListener('change', () => {
+  filters.subcategory = fSub.value;
+  filters.type = '';
+  fType.value = '';
+  populateTier3(filters.category, fSub.value);
+  currentPage = 1;
+  loadItems();
+});
+
+fType.addEventListener('change', () => {
+  filters.type = fType.value;
+  currentPage = 1;
+  loadItems();
+});
+
+btnClear.addEventListener('click', () => {
+  filters = { q: '', category: '', subcategory: '', type: '' };
+  fQ.value = ''; fCat.value = ''; fSub.value = ''; fType.value = '';
+  populateTier2(''); populateTier3('', '');
+  currentPage = 1;
+  loadItems();
+});
+
+/* ── AI Analyzer ── */
+function showAzStatus(type, msg) {
+  azStatusBlock.style.display = '';
+  azStatusBlock.className = `status-block visible ${type}`;
+  azStatusMsg.innerHTML   = msg;
+  azSpinner.style.display = type === 'running' ? 'block' : 'none';
+}
+
+function updateAzProgress(job) {
+  const done  = job.done  ?? 0;
+  const total = job.total ?? 0;
+  const pct   = total > 0 ? Math.round(done / total * 100) : 0;
+  azProgRow.style.display = '';
+  azProgText.textContent  = `${done} / ${total} listings`;
+  azProgPct.textContent   = `${pct}%`;
+  azProgBar.style.width   = `${pct}%`;
+  azProgTitle.textContent = job.currentTitle ? `↳ ${job.currentTitle}` : '';
+}
+
+function startAzTimer() {
+  clearInterval(azTimerInterval);
+  azTimerInterval = setInterval(() => { if (azStartedAt) azTimerEl.textContent = elapsed(azStartedAt); }, 1000);
+}
+function stopAzTimer() { clearInterval(azTimerInterval); azTimerInterval = null; }
+
+function startAzPolling() {
+  clearInterval(azPollTimer);
+  let pollTick = 0;
+  azPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch('/api/analyze/status');
+      const job = await res.json();
+      if (job.status === 'running') {
+        showAzStatus('running', `Analyzing listing <strong>#${job.currentId ?? '…'}</strong>`);
+        updateAzProgress(job);
+        pollTick++;
+        // Update stats every tick (2 s) — shows counts growing in real time
+        loadStats();
+        // Refresh items table every 5 ticks (~10 s) so new rows appear live.
+        // silent=true → no "Loading…" flash, table updates in-place quietly.
+        if (pollTick % 5 === 0) loadItems({ silent: true });
+      } else if (job.status === 'done' || job.status === 'error') {
+        clearInterval(azPollTimer); stopAzTimer();
+        btnAnalyze.disabled = false;
+        btnAnalyze.classList.remove('loading');
+        if (job.status === 'done') {
+          showAzStatus('done', `✅ Done — <strong>${job.done}</strong> listings analyzed` + (job.failed > 0 ? `, ${job.failed} failed` : '') + '.');
+        } else {
+          showAzStatus('error', `❌ Error: ${esc(job.error ?? 'unknown error')}`);
+        }
+        updateAzProgress(job);
+        loadStats();
+        loadItems();
+      }
+    } catch { /* retry */ }
+  }, 2000);
+}
+
+btnAnalyze.addEventListener('click', async () => {
+  btnAnalyze.disabled = true;
+  btnAnalyze.classList.add('loading');
+  azStartedAt = new Date().toISOString();
+  showAzStatus('running', 'Starting analyzer…');
+  azProgRow.style.display = 'none';
+  startAzTimer();
+
+  try {
+    const res  = await fetch('/api/analyze', { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    if (json.message) {
+      showAzStatus('done', `ℹ️ ${esc(json.message)}`);
+      stopAzTimer(); btnAnalyze.disabled = false; btnAnalyze.classList.remove('loading'); return;
+    }
+    showAzStatus('running', `Analyzing <strong>${json.job.total}</strong> listing(s)…`);
+    // Clear old results immediately so user sees fresh start
+    itemsContainer.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div><p>Results will appear here as listings are analyzed…</p></div>';
+    resultsCount.innerHTML = '<strong>0</strong> items';
+    startAzPolling();
+  } catch (err) {
+    stopAzTimer();
+    showAzStatus('error', `❌ ${esc(err.message)}`);
+    btnAnalyze.disabled = false;
+    btnAnalyze.classList.remove('loading');
+  }
+});
+
+/* ── Restore running analyzer on page load ── */
+(async () => {
+  try {
+    const res = await fetch('/api/analyze/status');
+    const job = await res.json();
+    if (job.status === 'running') {
+      btnAnalyze.disabled = true;
+      btnAnalyze.classList.add('loading');
+      azStartedAt = job.startedAt;
+      showAzStatus('running', `Analyzing listing <strong>#${job.currentId ?? '…'}</strong>`);
+      updateAzProgress(job);
+      startAzTimer();
+      startAzPolling();
+    }
+  } catch { /* ignore */ }
+})();
+
+/* ── Init ── */
+populateTier1();
+populateTier2('');
+loadStats();
+loadItems();
+</script>
+</body>
+</html>
