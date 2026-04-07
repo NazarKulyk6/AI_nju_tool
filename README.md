@@ -124,9 +124,12 @@ docker compose up -d --build
 
 `--build` forces Docker to rebuild the image with the new code. The database volume is preserved — your scraped data stays intact.
 
-## How It Works
+## Documentation
 
-For a detailed step-by-step explanation of the scraping process, query generation, stages, and storage rules see **[HOW_IT_WORKS.md](./HOW_IT_WORKS.md)**.
+| Guide | Description |
+|---|---|
+| 📖 [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) | Step-by-step scraping process: query generation, stages, storage rules |
+| 🤖 [AI_ANALYSIS_FLOW.md](./AI_ANALYSIS_FLOW.md) | Full AI analysis pipeline: backends, circuit breaker, prompt format, DB storage |
 
 ## Ports
 
