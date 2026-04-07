@@ -129,6 +129,7 @@ services:
       GEMINI_SUGGEST_MODELS:   "${GEMINI_SUGGEST_MODELS:-gemini-3.1-flash-lite-preview,gemma-3-27b-it,gemini-2.5-flash,gemma-3-12b-it}"
       GEMINI_RETRY_ATTEMPTS:   "${GEMINI_RETRY_ATTEMPTS:-4}"
       # ── Anti-detection ─────────────────────────────────────────────────────
+      SCRAPER_CONCURRENCY:          "${SCRAPER_CONCURRENCY:-3}"
       SCRAPER_HEADLESS:             "${SCRAPER_HEADLESS:-false}"
       BROWSER_LOCALE:               "${BROWSER_LOCALE:-hr-HR}"
       BROWSER_TIMEZONE:             "${BROWSER_TIMEZONE:-Europe/Zagreb}"
@@ -178,6 +179,7 @@ services:
       GEMINI_SUGGEST_MODELS:   "${GEMINI_SUGGEST_MODELS:-gemini-3.1-flash-lite-preview,gemma-3-27b-it,gemini-2.5-flash,gemma-3-12b-it}"
       GEMINI_RETRY_ATTEMPTS:   "${GEMINI_RETRY_ATTEMPTS:-4}"
       # ── Anti-detection ─────────────────────────────────────────────────────
+      SCRAPER_CONCURRENCY:          "${SCRAPER_CONCURRENCY:-3}"
       SCRAPER_HEADLESS:             "${SCRAPER_HEADLESS:-false}"
       BROWSER_LOCALE:               "${BROWSER_LOCALE:-hr-HR}"
       BROWSER_TIMEZONE:             "${BROWSER_TIMEZONE:-Europe/Zagreb}"

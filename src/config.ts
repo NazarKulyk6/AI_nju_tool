@@ -61,6 +61,17 @@ export const config = {
     },
   },
 
+  // ── Scraper concurrency ───────────────────────────────────────────────────────
+  //
+  //  How many browser tabs parse listings in parallel during Stage 2.
+  //  1  = sequential (safe, low CPU/memory)
+  //  2–4 = recommended balance between speed and detection risk
+  //  5+  = fast but higher chance of getting blocked
+  //
+  scraper: {
+    concurrency: envInt('SCRAPER_CONCURRENCY', 1),
+  },
+
   // ── Retry ────────────────────────────────────────────────────────────────────
   retry: {
     maxAttempts: envInt('RETRY_MAX_ATTEMPTS',  3),

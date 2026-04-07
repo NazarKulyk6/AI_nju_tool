@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { getPool, initDb } from './db';
-import { runScraper, ScraperProgress } from './scraper';
+import { collectLinksForQuery, parseQueuedLinks, ScraperProgress } from './scraper';
 import { buildSearchUrl, sleep } from './utils';
 import {
   getUnprocessedListings,
@@ -375,43 +375,60 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
 
   res.json({ ok: true, job: scrapeJob });
 
-  // Run all queries sequentially in the background
+  // ── Background job: Stage 1 ALL queries → Stage 2 ALL links ────────────────
   (async () => {
     try {
+      // ── Stage 1: collect links from every query into a shared bucket ──────
+      console.log(`\n[Scrape] ══ STAGE 1: collecting links for ${queries.length} query(ies) ══`);
+
+      // Running totals so the UI shows accumulating progress across queries
+      let totalLinksOffset = 0;
+      let totalPagesOffset = 0;
+
       for (let i = 0; i < queries.length; i++) {
         const q = queries[i];
         scrapeJob.currentQuery      = q;
         scrapeJob.currentQueryIndex = i + 1;
-        // Reset per-query progress counters for this new query
-        scrapeJob.stage        = 'collecting';
-        scrapeJob.linksFound   = 0;
-        scrapeJob.pagesScanned = 0;
-        scrapeJob.linksSkipped = 0;
-        scrapeJob.totalLinks   = 0;
-        scrapeJob.linksParsed  = 0;
-        scrapeJob.currentUrl   = '';
+        scrapeJob.stage             = 'collecting';
+        scrapeJob.currentUrl        = '';
 
-        console.log(`\n[Scrape] ══ Query ${i + 1}/${queries.length}: "${q}" ══`);
+        console.log(`\n[Scrape] ── Query ${i + 1}/${queries.length}: "${q}" ──`);
 
-        // Each query in the job gets its own sub-bucket: jobId_queryIndex
-        const subJobId = `${jobId}_${i}`;
-
-        await runScraper(
+        await collectLinksForQuery(
           buildSearchUrl(q),
-          category ?? undefined,
-          // Progress callback — update shared job state in real-time
+          jobId,
           (p: ScraperProgress) => {
-            scrapeJob.stage        = p.stage;
+            // linksFound/pagesScanned from the callback are totals for this job bucket
+            // (enqueuePendingUrl uses the same jid, so countPendingUrls grows globally)
             scrapeJob.linksFound   = p.linksFound;
-            scrapeJob.pagesScanned = p.pagesScanned;
-            scrapeJob.linksSkipped = p.linksSkipped;
-            scrapeJob.totalLinks   = p.totalLinks;
-            scrapeJob.linksParsed  = p.linksParsed;
+            scrapeJob.pagesScanned = totalPagesOffset + p.pagesScanned;
             scrapeJob.currentUrl   = p.currentUrl;
           },
-          subJobId,
         );
+
+        // Snapshot totals after each query finishes
+        totalLinksOffset = scrapeJob.linksFound;
+        totalPagesOffset = scrapeJob.pagesScanned;
       }
+
+      console.log(`\n[Scrape] ══ STAGE 1 DONE: ${scrapeJob.linksFound} total URLs queued ══`);
+
+      // ── Stage 2: parse every collected URL ───────────────────────────────
+      console.log('\n[Scrape] ══ STAGE 2: parsing all collected listings ══');
+
+      scrapeJob.stage      = 'parsing';
+      scrapeJob.currentUrl = '';
+
+      await parseQueuedLinks(
+        jobId,
+        category,
+        (p: ScraperProgress) => {
+          scrapeJob.linksSkipped = p.linksSkipped;
+          scrapeJob.totalLinks   = p.totalLinks;
+          scrapeJob.linksParsed  = p.linksParsed;
+          scrapeJob.currentUrl   = p.currentUrl;
+        },
+      );
 
       let saved = 0;
       try {
@@ -425,7 +442,7 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
         finishedAt: new Date().toISOString(),
         saved,
       };
-      console.log(`\n[Scrape] All ${queries.length} queries done. New rows: ${saved}`);
+      console.log(`\n[Scrape] Job done. New rows saved: ${saved}`);
     } catch (err) {
       scrapeJob = {
         ...scrapeJob,

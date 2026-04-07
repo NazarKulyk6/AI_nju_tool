@@ -29,8 +29,8 @@ interface ScraperContext {
 export interface ScraperProgress {
   stage:        'collecting' | 'parsing';
   // Stage 1
-  linksFound:   number;   // unique URLs collected so far
-  pagesScanned: number;   // search-result pages visited
+  linksFound:   number;   // unique URLs collected so far (all queries combined)
+  pagesScanned: number;   // search-result pages visited  (all queries combined)
   linksSkipped: number;   // URLs already in DB for this category (will be skipped)
   // Stage 2
   totalLinks:   number;   // URLs that will actually be parsed
@@ -80,10 +80,8 @@ export async function createBrowser(): Promise<ScraperContext> {
     });
   });
 
-  const page = await context.newPage();
-
-  // Abort unnecessary resource types to speed up scraping
-  await page.route('**/*', (route) => {
+  // Block heavy resource types for ALL pages in this context (images, media, fonts)
+  await context.route('**/*', (route) => {
     const type = route.request().resourceType();
     if (['image', 'media', 'font'].includes(type)) {
       route.abort();
@@ -91,6 +89,8 @@ export async function createBrowser(): Promise<ScraperContext> {
       route.continue();
     }
   });
+
+  const page = await context.newPage();
 
   console.log(`[Browser] Launched with UA: ${userAgent}`);
   return { browser, context, page };
@@ -100,12 +100,14 @@ export async function createBrowser(): Promise<ScraperContext> {
 
 /**
  * Collect listing URLs from ONE search-results page.
+ * Returns the list of URLs found on this page.
+ * Stops pagination when the page returns 0 results (no DOM "next" check needed).
  */
 async function getUrlsFromResultsPage(
   page: Page,
   url: string,
   pageNum: number,
-): Promise<{ urls: string[]; hasMore: boolean }> {
+): Promise<string[]> {
   console.log(`\n[Stage 1] Loading results page ${pageNum}: ${url}`);
 
   await withRetry(async () => {
@@ -113,7 +115,7 @@ async function getUrlsFromResultsPage(
   }, config.retry.maxAttempts, config.retry.baseDelayMs);
 
   await dismissCookieBanner(page);
-  await humanScroll(page);
+  // No humanScroll here — Stage 1 only collects links, no need to simulate reading
   await randomDelay(config.delay.afterResultsPage.min, config.delay.afterResultsPage.max);
 
   const urls = await page.evaluate((): string[] => {
@@ -131,22 +133,7 @@ async function getUrlsFromResultsPage(
   });
 
   console.log(`[Stage 1] Found ${urls.length} URLs on page ${pageNum}.`);
-
-  if (urls.length === 0) return { urls: [], hasMore: false };
-
-  const hasNextDom = await page.evaluate((): boolean => {
-    const selectors = [
-      'a[rel="next"]',
-      '.pagination-next:not(.disabled) a',
-      'li.next:not(.disabled) a',
-      '.EntityList-paginationNext a',
-      '.pagination .active + li:not(.disabled) a',
-      'nav.pagination a[aria-label*="ext"]',
-    ];
-    return selectors.some((sel) => !!document.querySelector(sel));
-  });
-
-  return { urls, hasMore: hasNextDom };
+  return urls;
 }
 
 // ─── Stage 2: Per-Listing Parsing ─────────────────────────────────────────────
@@ -329,30 +316,20 @@ async function dismissCookieBanner(page: Page): Promise<void> {
   }
 }
 
-// ─── Main Orchestrator ────────────────────────────────────────────────────────
+// ─── Stage 1 (exported): Collect links for ONE query ──────────────────────────
+//
+// Opens its own browser, paginates through ALL result pages until an empty page
+// is returned (no DOM "next button" detection — more reliable for njuskalo.hr).
+// Enqueues every found URL into the shared pending_urls bucket `jid`.
+//
+// `onProgress` reports per-query counts (linksFound / pagesScanned).
+//
 
-/**
- * Run the full two-stage scraping pipeline for a single search URL.
- *
- * Stage 1 — Link collection:
- *   Paginate through ALL search-results pages and collect every listing URL.
- *   Nothing is saved to the DB during this stage.
- *
- * Stage 2 — Listing parsing:
- *   Visit each collected URL, extract data, and save immediately to the DB.
- *
- * A `onProgress` callback is called after every significant state change so
- * that the web server can expose real-time status to the frontend.
- */
-export async function runScraper(
+export async function collectLinksForQuery(
   searchUrl: string,
-  category?: string,
+  jid: string,
   onProgress?: (p: ScraperProgress) => void,
-  jobId?: string,
 ): Promise<void> {
-  // Each call gets a unique job bucket in pending_urls
-  const jid = jobId ?? `job_${Date.now()}`;
-
   const { browser, page } = await createBrowser();
 
   const progress: ScraperProgress = {
@@ -368,12 +345,10 @@ export async function runScraper(
   const report = () => { if (onProgress) onProgress({ ...progress }); };
 
   try {
-    // ── Stage 1: Paginate search results, write every URL to DB ──────────────
-    console.log(`\n[Scraper] ══ STAGE 1: Link collection (job=${jid}) ══`);
-
     let pageNum = 1;
+    const MAX_PAGES = 200; // safety cap
 
-    while (true) {
+    while (pageNum <= MAX_PAGES) {
       const resultsUrl = pageNum === 1
         ? searchUrl
         : (() => {
@@ -382,14 +357,16 @@ export async function runScraper(
             return u.toString();
           })();
 
-      const { urls, hasMore } = await getUrlsFromResultsPage(page, resultsUrl, pageNum);
+      progress.currentUrl = resultsUrl;
 
+      const urls = await getUrlsFromResultsPage(page, resultsUrl, pageNum);
+
+      // Stop when page is empty — no need to check DOM "next" button
       if (urls.length === 0) {
-        console.log('[Stage 1] Empty page — collection complete.');
+        console.log(`[Stage 1] Page ${pageNum} is empty — collection complete.`);
         break;
       }
 
-      // Persist each URL to DB (dedup by job_id + url handled by unique index)
       for (const url of urls) {
         await enqueuePendingUrl(jid, url);
       }
@@ -399,88 +376,132 @@ export async function runScraper(
       progress.linksFound   = totalFound;
       report();
 
-      console.log(`[Stage 1] Page ${pageNum} done. Total URLs queued in DB: ${totalFound}`);
-
-      if (!hasMore) {
-        console.log('[Stage 1] No next page — collection complete.');
-        break;
-      }
+      console.log(`[Stage 1] Page ${pageNum} done. Total URLs in queue: ${totalFound}`);
 
       pageNum++;
       await randomDelay(config.delay.betweenPages.min, config.delay.betweenPages.max);
     }
 
     const totalQueued = await countPendingUrls(jid);
-    console.log(`\n[Scraper] ══ STAGE 1 DONE: ${totalQueued} unique URLs queued in DB ══`);
+    console.log(`[Stage 1] Query done: ${totalQueued} total URLs queued.`);
+  } finally {
+    await browser.close();
+    console.log('[Browser] Closed after Stage 1.');
+  }
+}
 
-    if (totalQueued === 0) {
-      console.log('[Scraper] No listings found. Exiting.');
-      progress.totalLinks = 0;
-      report();
-      return;
-    }
+// ─── Stage 2 (exported): Parse all queued links for a job ─────────────────────
+//
+// Opens its own browser, fetches all pending URLs from DB for `jid`,
+// filters out already-scraped ones for this category, and parses each listing.
+//
 
-    // ── Pre-filter: fetch only URLs not yet saved for this category ───────────
-    // Filtering is done inside the DB query — nothing large is loaded into memory
-    console.log('[Scraper] Fetching new (unscraped) URLs from DB for this category…');
-    const urlsToProcess = await fetchPendingUrls(jid, category ?? null);
-    const skipped       = await countSkippedUrls(jid, category ?? null);
+export async function parseQueuedLinks(
+  jid: string,
+  category: string | null | undefined,
+  onProgress?: (p: ScraperProgress) => void,
+): Promise<void> {
+  const { browser, context } = await createBrowser();
+
+  const progress: ScraperProgress = {
+    stage:        'parsing',
+    linksFound:   0,
+    pagesScanned: 0,
+    linksSkipped: 0,
+    totalLinks:   0,
+    linksParsed:  0,
+    currentUrl:   '',
+  };
+
+  const report = () => { if (onProgress) onProgress({ ...progress }); };
+
+  try {
+    const cat = category ?? null;
+
+    const urlsToProcess = await fetchPendingUrls(jid, cat);
+    const skipped       = await countSkippedUrls(jid, cat);
 
     progress.linksSkipped = skipped;
     progress.totalLinks   = urlsToProcess.length;
     report();
 
-    console.log(`[Scraper] ${skipped} URLs skipped (already in DB for category "${category ?? ''}"). Will parse ${urlsToProcess.length}.`);
+    console.log(`\n[Scraper] ══ STAGE 2: Parsing ${urlsToProcess.length} listings (skipped ${skipped} already in DB) ══`);
 
     if (urlsToProcess.length === 0) {
-      console.log('[Scraper] Nothing new to parse. Exiting.');
+      console.log('[Stage 2] Nothing new to parse.');
       return;
     }
 
-    // ── Stage 2: Parse & save each listing ───────────────────────────────────
-    console.log('\n[Scraper] ══ STAGE 2: Parsing listings ══');
+    // ── Parallel worker pool ──────────────────────────────────────────────────
+    const concurrency  = Math.max(1, config.scraper.concurrency);
+    const total        = urlsToProcess.length;
+    const urlQueue     = [...urlsToProcess]; // shared queue consumed by all workers
+    let   linksParsed  = 0;
+    let   totalSuccess = 0;
+    let   totalFail    = 0;
 
-    progress.stage       = 'parsing';
-    progress.linksParsed = 0;
-    report();
+    console.log(`[Stage 2] Concurrency: ${concurrency} tab(s)`);
 
-    let totalSuccess = 0;
-    let totalFail    = 0;
+    // Create one browser page per worker (route blocking already on context)
+    const workerPages = await Promise.all(
+      Array.from({ length: concurrency }, () => context.newPage()),
+    );
 
-    for (let i = 0; i < urlsToProcess.length; i++) {
-      const url = urlsToProcess[i];
+    const runWorker = async (workerPage: Page, workerId: number): Promise<void> => {
+      while (true) {
+        const url = urlQueue.shift();
+        if (!url) break;  // queue exhausted
 
-      progress.linksParsed = i;
-      progress.currentUrl  = url;
-      report();
+        const currentIdx = total - urlQueue.length; // 1-based position
+        progress.currentUrl = url;
+        progress.linksParsed = linksParsed;
+        report();
 
-      console.log(`\n[Stage 2] ${i + 1}/${urlsToProcess.length}: ${url}`);
+        console.log(`\n[Stage 2][w${workerId}] ${currentIdx}/${total}: ${url}`);
 
-      await randomDelay(config.delay.betweenListings.min, config.delay.betweenListings.max);
+        await randomDelay(config.delay.betweenListings.min, config.delay.betweenListings.max);
 
-      try {
-        const listing = await parseListing(page, url);
-        listing.category = category ?? null;
-        await saveToDb(listing);
-        await markUrlProcessed(jid, url);
-        totalSuccess++;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`[Stage 2] Failed: ${message}`);
-        totalFail++;
+        try {
+          const listing = await parseListing(workerPage, url);
+          listing.category = category ?? null;
+          await saveToDb(listing);
+          await markUrlProcessed(jid, url);
+          totalSuccess++;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[Stage 2][w${workerId}] Failed: ${message}`);
+          totalFail++;
+        }
+
+        linksParsed++;
+        console.log(`[Stage 2][w${workerId}] Progress: ${linksParsed}/${total} (saved: ${totalSuccess}, failed: ${totalFail})`);
       }
+    };
 
-      console.log(`[Stage 2] Progress: ${i + 1}/${urlsToProcess.length} (saved: ${totalSuccess}, failed: ${totalFail})`);
-    }
+    // Run all workers in parallel
+    await Promise.all(workerPages.map((wp, i) => runWorker(wp, i + 1)));
 
-    progress.linksParsed = urlsToProcess.length;
+    progress.linksParsed = total;
     report();
 
     console.log(`\n[Scraper] ══ STAGE 2 DONE: saved ${totalSuccess}, failed ${totalFail} ══`);
   } finally {
     await browser.close();
-    console.log('[Browser] Closed.');
-    // Clean up the DB queue for this job
+    console.log('[Browser] Closed after Stage 2.');
     await cleanupPendingUrls(jid);
   }
+}
+
+// ─── runScraper: single-query convenience wrapper (used by legacy callers) ────
+
+export async function runScraper(
+  searchUrl: string,
+  category?: string,
+  onProgress?: (p: ScraperProgress) => void,
+  jobId?: string,
+): Promise<void> {
+  const jid = jobId ?? `job_${Date.now()}`;
+
+  await collectLinksForQuery(searchUrl, jid, onProgress);
+  await parseQueuedLinks(jid, category ?? null, onProgress);
 }
