@@ -177,8 +177,13 @@ Example for input "rtx 2060":
       console.log(`[G4F/${suggestModel}] Expanded "${userInput}" → ${terms.length} terms`);
       res.json({ terms });
     } catch (err) {
-      console.error('[G4F] suggest-queries error:', (err as Error).message);
-      res.status(500).json({ error: (err as Error).message });
+      const msg = (err as Error).message ?? '';
+      const isNetworkErr = msg.includes('fetch failed') || msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND');
+      const friendly = isNetworkErr
+        ? `G4F service is unreachable (${msg}). Make sure it is running: docker compose --profile ai up -d g4f`
+        : msg;
+      console.error('[G4F] suggest-queries error:', msg);
+      res.status(500).json({ error: friendly });
     }
     return;
   }
@@ -204,14 +209,15 @@ Example for input "rtx 2060":
 
     let fetchRes: Awaited<ReturnType<typeof fetch>>;
     try {
-      fetchRes = await fetch(geminiUrl(model), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: bodyPayload,
-      });
-    } catch (err) {
-      console.error(`[Gemini/${model}] Network error:`, (err as Error).message);
-      res.status(500).json({ error: (err as Error).message });
-      return;
-    }
+        fetchRes = await fetch(geminiUrl(model), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: bodyPayload,
+        });
+      } catch (err) {
+        const msg = (err as Error).message ?? '';
+        console.error(`[Gemini/${model}] Network error:`, msg);
+        res.status(500).json({ error: `Network error reaching Gemini API: ${msg}` });
+        return;
+      }
 
     if (fetchRes.status === 429) {
       const errBody = await fetchRes.text();

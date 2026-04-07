@@ -1,6 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  docker compose up -d                       → start DB + web server
-#  docker compose --profile ai up -d          → also start g4f (AI_BACKEND=g4f)
+#  docker compose up -d                       → start DB + web server + g4f (AI)
 #  docker compose run --rm scraper            → run scraper interactively (CLI)
 #  Website: http://localhost:3001
 #  G4F API: http://localhost:1337/v1  (when --profile ai is active)
@@ -65,8 +64,7 @@ services:
   # ── G4F (gpt4free Interference API) ─────────────────────────────────────────
   # Provides a FREE OpenAI-compatible REST API at http://g4f:8080/v1 (internal)
   # and http://localhost:1337/v1 (external).
-  # Start with:  docker compose --profile ai up -d
-  # Required when AI_BACKEND=g4f (the default).
+  # Starts automatically with docker compose up -d (required when AI_BACKEND=g4f).
   g4f:
     build:
       context: ./g4f_bridge
@@ -91,8 +89,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    profiles:
-      - ai                  # opt-in: docker compose --profile ai up -d
 
   # ── Web server ──────────────────────────────────────────────────────────────
   web:
